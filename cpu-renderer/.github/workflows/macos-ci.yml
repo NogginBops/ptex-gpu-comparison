@@ -1,0 +1,10 @@
+name: macOS
+on: push
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2.0.0
+      - name: Build
+        run: ./build_macos.sh

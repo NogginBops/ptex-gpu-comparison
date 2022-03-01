@@ -1,0 +1,11 @@
+{
+  "Version": 1,
+  "ProjectMap": {
+    "c95d049d-2d1b-3b2e-ab70-6b1aaa38642e": {
+      "ProjectGuid": "c95d049d-2d1b-3b2e-ab70-6b1aaa38642e",
+      "DisplayName": "Viewer",
+      "ColorIndex": 0
+    }
+  },
+  "NextColorIndex": 1
+}

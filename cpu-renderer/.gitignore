@@ -1,0 +1,15 @@
+.DS_Store
+Thumbs.db
+
+.idea
+.vscode
+
+*.pyc
+*.zip
+renderer/*.obj
+scripts/*.hdr
+
+build
+cmake-build-*
+renderer-*
+Viewer*

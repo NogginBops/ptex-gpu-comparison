@@ -1,0 +1,10 @@
+name: Windows
+on: push
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2.0.0
+      - name: Build
+        run: ./build_win32.bat

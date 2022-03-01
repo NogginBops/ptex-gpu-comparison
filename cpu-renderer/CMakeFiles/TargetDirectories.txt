@@ -1,0 +1,3 @@
+C:/Users/julius.hager/Documents/GitHub/KTH/ptex-gpu-comparison/cpu-renderer/CMakeFiles/Viewer.dir
+C:/Users/julius.hager/Documents/GitHub/KTH/ptex-gpu-comparison/cpu-renderer/CMakeFiles/ALL_BUILD.dir
+C:/Users/julius.hager/Documents/GitHub/KTH/ptex-gpu-comparison/cpu-renderer/CMakeFiles/ZERO_CHECK.dir
