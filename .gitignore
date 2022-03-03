@@ -6,8 +6,6 @@
 *.slo
 *.lo
 *.o
-*.obj
-!assets/*
 
 # Precompiled Headers
 *.gch
