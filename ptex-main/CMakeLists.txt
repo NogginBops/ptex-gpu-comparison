@@ -33,6 +33,8 @@ enable_testing()
 # Setup platform-specific threading flags.
 find_package(Threads REQUIRED)
 
+find_package(ZLIB)
+
 # Use pkg-config to create a PkgConfig::Ptex_ZLIB imported target
 find_package(PkgConfig REQUIRED)
 pkg_checK_modules(Ptex_ZLIB REQUIRED zlib IMPORTED_TARGET)

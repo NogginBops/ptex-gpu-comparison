@@ -2,6 +2,7 @@
 Thumbs.db
 
 .idea/*
+.vs/*
 .vscode
 .cmake/*
 

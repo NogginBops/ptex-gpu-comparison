@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(Renderer LANGUAGES C)
+project(Renderer LANGUAGES CXX)
 
 # ==============================================================================
 # Headers and sources
@@ -32,36 +32,36 @@ set(HEADERS
     renderer/tests/test_pbr.h
 )
 set(SOURCES
-    renderer/core/camera.c
-    renderer/core/darray.c
-    renderer/core/draw2d.c
-    renderer/core/graphics.c
-    renderer/core/image.c
-    renderer/core/maths.c
-    renderer/core/mesh.c
-    renderer/core/private.c
-    renderer/core/scene.c
-    renderer/core/skeleton.c
-    renderer/core/texture.c
-    renderer/scenes/blinn_scenes.c
-    renderer/scenes/pbr_scenes.c
-    renderer/scenes/scene_helper.c
-    renderer/shaders/blinn_shader.c
-    renderer/shaders/cache_helper.c
-    renderer/shaders/pbr_shader.c
-    renderer/shaders/skybox_shader.c
-    renderer/tests/test_blinn.c
-    renderer/tests/test_helper.c
-    renderer/tests/test_pbr.c
-    renderer/main.c
+    renderer/core/camera.cpp
+    renderer/core/darray.cpp
+    renderer/core/draw2d.cpp
+    renderer/core/graphics.cpp
+    renderer/core/image.cpp
+    renderer/core/maths.cpp
+    renderer/core/mesh.cpp
+    renderer/core/private.cpp
+    renderer/core/scene.cpp
+    renderer/core/skeleton.cpp
+    renderer/core/texture.cpp
+    renderer/scenes/blinn_scenes.cpp
+    renderer/scenes/pbr_scenes.cpp
+    renderer/scenes/scene_helper.cpp
+    renderer/shaders/blinn_shader.cpp
+    renderer/shaders/cache_helper.cpp
+    renderer/shaders/pbr_shader.cpp
+    renderer/shaders/skybox_shader.cpp
+    renderer/tests/test_blinn.cpp
+    renderer/tests/test_helper.cpp
+    renderer/tests/test_pbr.cpp
+    renderer/main.cpp
 )
 
 if(WIN32)
-    set(SOURCES ${SOURCES} renderer/platforms/win32.c)
+    set(SOURCES ${SOURCES} renderer/platforms/win32.cpp)
 elseif(APPLE)
     set(SOURCES ${SOURCES} renderer/platforms/macos.m)
 else()
-    set(SOURCES ${SOURCES} renderer/platforms/linux.c)
+    set(SOURCES ${SOURCES} renderer/platforms/linux.cpp)
 endif()
 
 # ==============================================================================
