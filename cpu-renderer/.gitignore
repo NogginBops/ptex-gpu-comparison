@@ -1,8 +1,9 @@
 .DS_Store
 Thumbs.db
 
-.idea
+.idea/*
 .vscode
+.cmake/*
 
 *.pyc
 *.zip
@@ -13,3 +14,5 @@ build
 cmake-build-*
 renderer-*
 Viewer*
+
+.cmake
