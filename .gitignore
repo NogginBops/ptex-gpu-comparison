@@ -56,3 +56,4 @@ lib/*
 bin/*
 test/test_runner
 
+gpu-renderer/build/
