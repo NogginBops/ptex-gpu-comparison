@@ -147,7 +147,9 @@ int main(int argv, char** argc)
             glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, data);
             checkError("getpixels");
 
-            stbi_write_png("test.png", width, height, 3, data, 3);
+            stbi_flip_vertically_on_write(true);
+
+            stbi_write_png("test.png", width, height, 3, data, width*3);
 
             free(data);
             takeScreenshot = false;
