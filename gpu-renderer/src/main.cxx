@@ -7,6 +7,9 @@
 
 #include <glad/glad.h>
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
 void GLFWErrorCallback(int error_code, const char* description)
 {
     printf("%d: %s\n", error_code, description);
@@ -15,6 +18,25 @@ void GLFWErrorCallback(int error_code, const char* description)
 void GLFWFrambufferSizeCallback(GLFWwindow* window, int width, int height)
 {
     glViewport(0, 0, width, height);
+}
+
+bool takeScreenshot = false;
+
+void GLFWKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    if (key == GLFW_KEY_P)
+    {
+        takeScreenshot = true;
+    }
+}
+
+void checkError(const char* message)
+{
+    GLenum error = glGetError();
+    if (error != GL_NO_ERROR)
+    {
+        printf("Error %d: %s\n", error, message);
+    }
 }
 
 int main(int argv, char** argc)
@@ -28,6 +50,10 @@ int main(int argv, char** argc)
         printf("Failed to initialize GLFW\n");
         return EXIT_FAILURE;
     }
+
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     GLFWwindow* window = glfwCreateWindow(200, 200, "Test title", NULL, NULL);
     if (window == NULL)
@@ -47,6 +73,7 @@ int main(int argv, char** argc)
     glfwShowWindow(window);
 
     glfwSetFramebufferSizeCallback(window, GLFWFrambufferSizeCallback);
+    glfwSetKeyCallback(window, GLFWKeyCallback);
 
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
@@ -57,6 +84,10 @@ int main(int argv, char** argc)
         0.5f, -0.5f, 0.0f,
         0.0f, 0.5f, 0.0f,
     };
+
+    GLuint vao;
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
 
     GLuint buffer;
     glGenBuffers(1, &buffer);
@@ -100,14 +131,34 @@ int main(int argv, char** argc)
 
     glUseProgram(program);
 
+    checkError("init");
+
     while (glfwWindowShouldClose(window) == false)
     {
         glfwPollEvents();
 
-        glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+        if (takeScreenshot)
+        {
+            int width, height;
+            glfwGetFramebufferSize(window, &width, &height);
+            void* data = malloc(width * height * 3);
+
+            //glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, data);
+            checkError("getpixels");
+
+            stbi_write_png("test.png", width, height, 3, data, 3);
+
+            free(data);
+            takeScreenshot = false;
+        }
+
+        glClearColor(1.0f, 0.5f, 0.8f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        checkError("clear");
 
         glDrawArrays(GL_TRIANGLES, 0, 3);
+        checkError("draw");
 
         glfwSwapBuffers(window);
     }

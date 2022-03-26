@@ -22,3 +22,7 @@ target_link_libraries(GpuRenderer glfw)
 include_directories(lib/glad/include)
 
 target_sources(GpuRenderer PRIVATE lib/glad/src/glad.c)
+
+######## STB ########
+
+include_directories(lib/stb)
