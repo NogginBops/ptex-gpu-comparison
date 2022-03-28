@@ -1,5 +1,5 @@
 [submodule "renderer"]
-	path = renderer
+	path = cpu-renderer
 	url = git@github.com:NogginBops/renderer.git
 [submodule "gpu-renderer/lib/glfw"]
 	path = gpu-renderer/lib/glfw
