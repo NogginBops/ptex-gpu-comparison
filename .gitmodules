@@ -1,6 +1,6 @@
-[submodule "renderer"]
+[submodule "cpu-renderer"]
 	path = cpu-renderer
-	url = git@github.com:NogginBops/renderer.git
+	url = git@github.com:NogginBops/cpu-renderer.git
 [submodule "gpu-renderer/lib/glfw"]
 	path = gpu-renderer/lib/glfw
 	url = git@github.com:glfw/glfw.git
