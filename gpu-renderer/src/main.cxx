@@ -161,7 +161,7 @@ framebuffer_t create_framebuffer(framebuffer_desc desc, int width, int height)
     {
         framebuffer.color_attachments[i] = create_color_attachment_texture(desc.color_attachments[i], width, height);
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + 1, GL_TEXTURE_2D, framebuffer.color_attachments[i], 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, framebuffer.color_attachments[i], 0);
     }
 
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -283,9 +283,18 @@ int main(int argv, char** argc)
         GL_LINEAR, GL_LINEAR
     };
 
-    color_attachment_desc* color_descriptions = new color_attachment_desc[2];
+    color_attachment_desc UV_deriv_desc = {
+        GL_RGBA32F,
+        GL_RGBA,
+        GL_FLOAT,
+        GL_REPEAT, GL_REPEAT,
+        GL_LINEAR, GL_LINEAR
+    };
+
+    color_attachment_desc* color_descriptions = new color_attachment_desc[3];
     color_descriptions[0] = faceID_desc;
     color_descriptions[1] = UV_desc;
+    color_descriptions[2] = UV_deriv_desc;
 
     depth_attachment_desc depth_desc = {
         GL_DEPTH_COMPONENT32F,
@@ -297,7 +306,7 @@ int main(int argv, char** argc)
     depth_descriptions[0] = depth_desc;
 
     g_framebuffer_desc = {
-        2,
+        3,
         color_descriptions,
         depth_descriptions,
     };
@@ -344,6 +353,20 @@ int main(int argv, char** argc)
         "   FragColor = vec4(fColor, 1.0);\n"
         "}\0";
 
+    const char* outputFragShaderSource = "#version 330 core\n"
+        "in vec3 fColor;\n"
+        "layout (location = 0) out uint faceID;\n"
+        "layout (location = 1) out vec2 uv;\n"
+        "layout (location = 2) out vec4 uv_deriv;\n"
+
+        "void main()\n"
+        "{\n"
+        "   faceID = uint(gl_PrimitiveID + 1);\n"
+        "   uv = fColor.xy;\n"
+        "   uv_deriv.xy = dFdx(fColor.xy);\n"
+        "   uv_deriv.zw = dFdy(fColor.xy);\n"
+        "}\0";
+
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
     glCompileShader(vertexShader);
@@ -355,6 +378,11 @@ int main(int argv, char** argc)
     glCompileShader(fragmentShader);
     checkShaderError(fragmentShader);
 
+    GLuint outputFragShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(outputFragShader, 1, &outputFragShaderSource, NULL);
+    glCompileShader(outputFragShader);
+    checkShaderError(outputFragShader);
+
     GLuint program = glCreateProgram();
 
     glAttachShader(program, vertexShader);
@@ -362,10 +390,15 @@ int main(int argv, char** argc)
     glLinkProgram(program);
     checkLinkError(program);
 
+    GLuint outputProgram = glCreateProgram();
+    glAttachShader(outputProgram, vertexShader);
+    glAttachShader(outputProgram, outputFragShader);
+    glLinkProgram(outputProgram);
+    checkLinkError(outputProgram);
+
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
-
-    glUseProgram(program);
+    glDeleteShader(outputFragShader);
 
     mat4_t view = 
     { {
@@ -392,8 +425,15 @@ int main(int argv, char** argc)
 
     mat4_t mvp = mat4_mul_mat4(model, vp);
 
+    glUseProgram(program);
+
     int vp_location = glGetUniformLocation(program, "vp");
-    glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*) &mvp);
+    glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*)&mvp);
+
+    glUseProgram(outputProgram);
+
+    vp_location = glGetUniformLocation(program, "vp");
+    glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*)&mvp);
 
     glEnable(GL_DEPTH_TEST);
 
@@ -408,27 +448,63 @@ int main(int argv, char** argc)
             // UW1, VW2, UW2, VW2
             // 
 
-
             int width, height;
             glfwGetFramebufferSize(window, &width, &height);
-            void* data = malloc(width * height * 3);
-
-            //glPixelStorei(GL_PACK_ALIGNMENT, 1);
-            glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, data);
             
+            glBindFramebuffer(GL_FRAMEBUFFER, g_frambuffer.framebuffer);
+
+            glReadBuffer(GL_COLOR_ATTACHMENT0);
+            void* faceID_buffer = malloc(width * height * sizeof(uint16_t));
+            glReadPixels(0, 0, width, height, GL_RED_INTEGER, GL_UNSIGNED_SHORT, faceID_buffer);
+
+            glReadBuffer(GL_COLOR_ATTACHMENT1);
+            void* uv_buffer = malloc(width * height * sizeof(vec2_t));
+            glReadPixels(0, 0, width, height, GL_RG, GL_FLOAT, uv_buffer);
+
+            glReadBuffer(GL_COLOR_ATTACHMENT2);
+            void* uv_deriv_buffer = malloc(width * height * sizeof(vec4_t));
+            glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT, uv_deriv_buffer);
+
             stbi_flip_vertically_on_write(true);
 
-            stbi_write_png("test.png", width, height, 3, data, width*3);
+            stbi_write_png("test_faceID.png", width, height, 1, faceID_buffer, width*2);
+            stbi_write_png("test_uv.png", width, height, 2, uv_buffer, width * 2);
+            stbi_write_png("test_uv_deriv.png", width, height, 4, uv_deriv_buffer, width * 4);
 
-            free(data);
+            free(faceID_buffer);
+            free(uv_buffer);
+            free(uv_deriv_buffer);
             takeScreenshot = false;
         }
 
-        glClearColor(1.0f, 0.5f, 0.8f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        
+        glBindFramebuffer(GL_FRAMEBUFFER, g_frambuffer.framebuffer);
+
+        GLenum drawBuffers[] = { 
+            GL_COLOR_ATTACHMENT0, 
+            GL_COLOR_ATTACHMENT1, 
+            GL_COLOR_ATTACHMENT2,
+        };
+        glDrawBuffers(3, drawBuffers);
+
+        uint32_t faceClearValue[] = { 0, 0, 0, 0 };
+        float uvClearValue[] = { 0, 0, 0, 0 };
+        float depthClearValue = 1.0f;
+        glClearBufferuiv(GL_COLOR, 0, faceClearValue);
+        glClearBufferfv(GL_COLOR, 1, uvClearValue);
+        glClearBufferfv(GL_DEPTH, 0, &depthClearValue);
+
+        glUseProgram(outputProgram);
+
         glDrawArrays(GL_TRIANGLES, 0, mesh->num_faces * 3);
         
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glUseProgram(program);
+
+        glClearColor(1.0f, 0.5f, 0.8f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+
+        glDrawArrays(GL_TRIANGLES, 0, mesh->num_faces * 3);
+
         glfwSwapBuffers(window);
     }
 
