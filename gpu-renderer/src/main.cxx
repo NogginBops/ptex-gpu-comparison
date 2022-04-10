@@ -44,6 +44,9 @@ typedef struct {
 framebuffer_desc g_framebuffer_desc;
 framebuffer_t g_frambuffer;
 
+framebuffer_desc g_output_framebuffer_desc;
+framebuffer_t g_output_framebuffer;
+
 void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int width, int height);
 
 void GLFWErrorCallback(int error_code, const char* description)
@@ -59,6 +62,7 @@ void GLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLs
 void GLFWFrambufferSizeCallback(GLFWwindow* window, int width, int height)
 {
     recreate_framebuffer(&g_frambuffer, g_framebuffer_desc, width, height);
+    recreate_framebuffer(&g_output_framebuffer, g_output_framebuffer_desc, width, height);
     glViewport(0, 0, width, height);
 }
 
@@ -66,7 +70,7 @@ bool takeScreenshot = false;
 
 void GLFWKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-    if (key == GLFW_KEY_ENTER)
+    if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
     {
         takeScreenshot = true;
     }
@@ -212,6 +216,142 @@ void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+#define R8UI 1
+#define RG8UI 2
+#define RGB8UI 3
+#define RGBA8UI 4
+
+#define R16UI 5
+#define RG16UI 6
+#define RGB16UI 7
+#define RGBA16UI 8
+
+#define R32F 9
+#define RG32F 10
+#define RGB32F 11
+#define RGBA32F 12
+
+int img_pixel_size_from_format(int format)
+{
+    int pixel_size = -1;
+    switch (format) {
+    case R8UI:     pixel_size = 1 * sizeof(int8_t);    break;
+    case RG8UI:    pixel_size = 2 * sizeof(int8_t);    break;
+    case RGB8UI:   pixel_size = 3 * sizeof(int8_t);    break;
+    case RGBA8UI:  pixel_size = 4 * sizeof(int8_t);    break;
+    case R16UI:    pixel_size = 1 * sizeof(int16_t);   break;
+    case RG16UI:   pixel_size = 2 * sizeof(int16_t);   break;
+    case RGB16UI:  pixel_size = 3 * sizeof(int16_t);   break;
+    case RGBA16UI: pixel_size = 4 * sizeof(int16_t);   break;
+    case R32F:     pixel_size = 1 * sizeof(float);     break;
+    case RG32F:    pixel_size = 2 * sizeof(float);     break;
+    case RGB32F:   pixel_size = 3 * sizeof(float);     break;
+    case RGBA32F:  pixel_size = 4 * sizeof(float);     break;
+    default: assert(false && "Unknown image format."); break;
+    }
+    return pixel_size;
+}
+
+void img_write(const char* filename, int width, int height, int format, const void* data)
+{
+    FILE* file;
+    errno_t err = fopen_s(&file, filename, "wb");
+    assert(err == 0 && "Could not open file!");
+    
+    fwrite("img", 3, 1, file);
+
+    int32_t header[] = { width, height, format };
+    fwrite(header, sizeof(header), 1, file);
+    
+    int pixel_size = img_pixel_size_from_format(format);
+
+    int data_size = width * height * pixel_size;
+
+    fwrite(data, data_size, 1, file);
+
+    fclose(file);
+}
+
+void* img_read(const char* filename, int* width, int* height, int* format)
+{
+    FILE* file;
+    errno_t err = fopen_s(&file, filename, "wb");
+    assert(err == 0 && "Could not open file");
+
+    char magic[3];
+    fread(magic, 3, 1, file);
+    
+    fread(width, 4, 1, file);
+    fread(height, 4, 1, file);
+    fread(format, 4, 1, file);
+
+    assert(width >= 0 && "Width cannot be negative");
+    assert(height >= 0 && "Height cannot be negative");
+
+    int pixel_size = img_pixel_size_from_format(*format);
+    
+    int data_size = *width * *height * pixel_size;
+
+    void* data = malloc(data_size);
+    assert(data !=  NULL);
+
+    fread(data, data_size, 1, file);
+
+    fclose(file);
+
+    return data;
+}
+
+typedef struct {
+    uint8_t r, g, b;
+} rgb8_t;
+
+uint8_t convert_float_uint(float f)
+{
+    //return (uint8_t)((f * 255.0f) - 0.0f);
+    return (uint8_t)roundf(f * 255.0f);
+}
+
+rgb8_t vec3_to_rgb8(vec3_t vec)
+{
+    return { convert_float_uint(vec.x), convert_float_uint(vec.y), convert_float_uint(vec.z) };
+}
+
+void* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec2_t* uv_buffer, vec4_t* uv_deriv_buffer, vec3_t background_color)
+{
+    rgb8_t* cpu_data = (rgb8_t*)malloc(width * height * sizeof(rgb8_t));
+    assert(cpu_data != NULL);
+
+    rgb8_t bg = { (uint8_t)(background_color.x * 255), (uint8_t)(background_color.y * 255), (uint8_t)(background_color.z * 255) };
+
+    for (int y = 0; y < height; y++)
+    {
+        for (int x = 0; x < width; x++) {
+
+            int i = y * width + x;
+
+            int16_t id = faceID_buffer[i] - 1;
+            
+            if (id == -1)
+            {
+                cpu_data[i] = bg;
+                continue;
+            }
+
+
+            vec2_t uv = uv_buffer[i];
+
+            vec3_t color = { uv.x, uv.y, 1 - uv.x - uv.y };
+
+            //const rgb8_t colors[] = { {255, 0, 0}, {0, 255, 0}, {0, 0, 255} };
+
+            cpu_data[i] = vec3_to_rgb8(color);
+        }
+    }
+
+    return cpu_data;
+}
+
 int main(int argv, char** argc)
 {
     printf("Hello, world!\n");
@@ -228,6 +368,7 @@ int main(int argv, char** argc)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+    glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE);
 
     GLFWwindow* window = glfwCreateWindow(600, 600, "Test title", NULL, NULL);
     if (window == NULL)
@@ -266,52 +407,85 @@ int main(int argv, char** argc)
         0.5f, -0.5f, 0.0f,
         0.0f, 0.5f, 0.0f,
     };
-
-    color_attachment_desc faceID_desc = {
+    {
+        color_attachment_desc faceID_desc = {
         GL_R16UI,
         GL_RED_INTEGER,
         GL_UNSIGNED_INT,
         GL_REPEAT, GL_REPEAT,
         GL_LINEAR, GL_LINEAR
-    };
+        };
 
-    color_attachment_desc UV_desc = {
-        GL_RG32F,
-        GL_RG,
-        GL_FLOAT,
-        GL_REPEAT, GL_REPEAT,
-        GL_LINEAR, GL_LINEAR
-    };
+        color_attachment_desc UV_desc = {
+            GL_RG32F,
+            GL_RG,
+            GL_FLOAT,
+            GL_REPEAT, GL_REPEAT,
+            GL_LINEAR, GL_LINEAR
+        };
 
-    color_attachment_desc UV_deriv_desc = {
-        GL_RGBA32F,
-        GL_RGBA,
-        GL_FLOAT,
-        GL_REPEAT, GL_REPEAT,
-        GL_LINEAR, GL_LINEAR
-    };
+        color_attachment_desc UV_deriv_desc = {
+            GL_RGBA32F,
+            GL_RGBA,
+            GL_FLOAT,
+            GL_REPEAT, GL_REPEAT,
+            GL_LINEAR, GL_LINEAR
+        };
 
-    color_attachment_desc* color_descriptions = new color_attachment_desc[3];
-    color_descriptions[0] = faceID_desc;
-    color_descriptions[1] = UV_desc;
-    color_descriptions[2] = UV_deriv_desc;
+        color_attachment_desc* color_descriptions = new color_attachment_desc[3];
+        color_descriptions[0] = faceID_desc;
+        color_descriptions[1] = UV_desc;
+        color_descriptions[2] = UV_deriv_desc;
 
-    depth_attachment_desc depth_desc = {
-        GL_DEPTH_COMPONENT32F,
-        GL_REPEAT, GL_REPEAT,
-        GL_LINEAR, GL_LINEAR
-    };
+        depth_attachment_desc depth_desc = {
+            GL_DEPTH_COMPONENT32F,
+            GL_REPEAT, GL_REPEAT,
+            GL_LINEAR, GL_LINEAR
+        };
 
-    depth_attachment_desc* depth_descriptions = new depth_attachment_desc[1];
-    depth_descriptions[0] = depth_desc;
+        depth_attachment_desc* depth_descriptions = new depth_attachment_desc[1];
+        depth_descriptions[0] = depth_desc;
 
-    g_framebuffer_desc = {
-        3,
-        color_descriptions,
-        depth_descriptions,
-    };
+        g_framebuffer_desc = {
+            3,
+            color_descriptions,
+            depth_descriptions,
+        };
 
-    g_frambuffer = create_framebuffer(g_framebuffer_desc, width, height);
+        g_frambuffer = create_framebuffer(g_framebuffer_desc, width, height);
+    }
+
+    {
+        color_attachment_desc color_desc = {
+            GL_RGB32F,
+            GL_RGB,
+            GL_FLOAT,
+            GL_REPEAT, GL_REPEAT,
+            GL_LINEAR, GL_LINEAR
+        };
+
+        color_attachment_desc* color_descriptions = new color_attachment_desc[1];
+        color_descriptions[0] = color_desc;
+
+        depth_attachment_desc depth_desc = {
+            GL_DEPTH_COMPONENT32F,
+            GL_REPEAT, GL_REPEAT,
+            GL_LINEAR, GL_LINEAR
+        };
+
+        depth_attachment_desc* depth_descriptions = new depth_attachment_desc[1];
+        depth_descriptions[0] = depth_desc;
+
+        g_output_framebuffer_desc = {
+            1,
+            color_descriptions,
+            depth_descriptions
+        };
+
+        g_output_framebuffer = create_framebuffer(g_output_framebuffer_desc, width, height);
+    }
+    
+
 
     mesh_t* mesh = load_obj("susanne.obj");
 
@@ -350,6 +524,7 @@ int main(int argv, char** argc)
         "out vec4 FragColor;\n"
         "void main()\n"
         "{\n"
+        //"   const vec3 colors[3] = vec3[]( vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0) );\n"
         "   FragColor = vec4(fColor, 1.0);\n"
         "}\0";
 
@@ -437,10 +612,13 @@ int main(int argv, char** argc)
 
     glEnable(GL_DEPTH_TEST);
 
+    vec3_t bg_color = { 1.0f, 0.5f, 0.8f };
+
     while (glfwWindowShouldClose(window) == false)
     {
         glfwPollEvents();
 
+        // FIXME: Take the screenshot after rendering this frame?
         if (takeScreenshot)
         {
             // We need to render out:
@@ -465,15 +643,29 @@ int main(int argv, char** argc)
             void* uv_deriv_buffer = malloc(width * height * sizeof(vec4_t));
             glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT, uv_deriv_buffer);
 
-            stbi_flip_vertically_on_write(true);
+            img_write("text_faceID.img", width, height, R16UI, faceID_buffer);
+            img_write("test_uv.img", width, height, RG32F, uv_buffer);
+            img_write("test_uv_deriv.img", width, height, RGBA32F, uv_deriv_buffer);
 
-            stbi_write_png("test_faceID.png", width, height, 1, faceID_buffer, width*2);
-            stbi_write_png("test_uv.png", width, height, 2, uv_buffer, width * 2);
-            stbi_write_png("test_uv_deriv.png", width, height, 4, uv_deriv_buffer, width * 4);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            void* reference_buffer = malloc(width * height * 3 * sizeof(uint8_t));
+            glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, reference_buffer);
+
+            stbi_flip_vertically_on_write(true);
+            stbi_write_png("test_ref.png", width, height, 3, reference_buffer, width * 3 * sizeof(uint8_t));
+            img_write("test_ref.img", width, height, RGB8UI, reference_buffer);
+
+            void* cpu_buffer = calculate_image_cpu(width, height, (uint16_t*)faceID_buffer, (vec2_t*)uv_buffer, (vec4_t*)uv_deriv_buffer, bg_color);
+
+            stbi_write_png("test_cpu.png", width, height, 3, cpu_buffer, width * 3);
+            img_write("test_cpu.img", width, height, RGB8UI, cpu_buffer);
 
             free(faceID_buffer);
             free(uv_buffer);
             free(uv_deriv_buffer);
+            free(reference_buffer);
+            free(cpu_buffer);
             takeScreenshot = false;
         }
 
@@ -500,7 +692,7 @@ int main(int argv, char** argc)
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glUseProgram(program);
 
-        glClearColor(1.0f, 0.5f, 0.8f, 1.0f);
+        glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         glDrawArrays(GL_TRIANGLES, 0, mesh->num_faces * 3);

@@ -8,6 +8,8 @@
 
 #include <assert.h>
 
+#include <stdint.h>
+
 void print_usage()
 {
 	printf("usage: ImageComparer.exe path1 path2\n");
@@ -78,6 +80,8 @@ int main(int argc, char* argv[])
 
 	float redSME = 0, greenSME = 0, blueSME = 0;
 
+	int diffs = 0;
+
 	char* img1 = image1.data;
 	char* img2 = image2.data;
 	for (int y = 0; y < image1.height; y++) {
@@ -90,12 +94,18 @@ int main(int argc, char* argv[])
 			blueSME  += calcSquareDiff(img1[index+2], img2[index+2]);
 
 			if (red_diff != 0) {
-				printf("red diff at x: %d, y: %d\n", x, y);
+				printf("red diff at x: %d, y: %d, ref: %u, comp: %u\n", x, y, (uint8_t)img1[index], (uint8_t)img2[index]);
+				diffs++;
 			}
 		}
 	}
 
+	redSME /= (image1.width * image1.height);
+	greenSME /= (image1.width * image1.height);
+	blueSME /= (image1.width * image1.height);
+
 	printf("redSME: %g, greenSME: %g, blueSME: %g\n", redSME, greenSME, blueSME);
+	printf("%d different red pixels\n", diffs);
 
 	stbi_image_free(image1.data);
 	stbi_image_free(image2.data);
