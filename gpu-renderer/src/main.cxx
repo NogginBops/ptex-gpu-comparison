@@ -352,6 +352,62 @@ void* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec2_t
     return cpu_data;
 }
 
+float calculate_sme(uint8_t v1, uint8_t v2) 
+{
+    float f1 = v1 / 255.0f;
+    float f2 = v2 / 255.0f;
+
+    float diff = f1 - f2;
+
+    return diff * diff;
+}
+
+void compare_buffers(uint8_t* reference, uint8_t* result, int width, int height)
+{
+    float red_sme = 0, green_sme = 0, blue_sme = 0;
+    int diffs = 0;
+
+    for (int y = 0; y < height; y++)
+    {
+        for (int x = 0; x < width; x++) 
+        {
+            int i = y * width + x;
+
+            int ref_red   = reference[i + 0];
+            int ref_green = reference[i + 1];
+            int ref_blue  = reference[i + 2];
+            
+            int res_red   = result[i + 0];
+            int res_green = result[i + 1];
+            int res_blue  = result[i + 2];
+
+            float red_diff   = calculate_sme(ref_red, res_red);
+            float green_diff = calculate_sme(ref_green, res_green);
+            float blue_diff  = calculate_sme(ref_blue, res_blue);
+
+            red_sme += red_diff;
+            green_sme += green_diff;
+            blue_sme += blue_diff;
+
+            if (red_diff != 0 || green_diff != 0 || blue_diff != 0) {
+
+                printf("Diff at (%d, %d). Reference: (%u, %u, %u), Result: (%u, %u, %u)\n", x, y, ref_red, ref_green, ref_blue, res_red, res_green, res_blue);
+
+                diffs++;
+            }
+        }
+    }
+
+    int total_pixels = width * height;
+
+    red_sme /= total_pixels;
+    green_sme /= total_pixels;
+    blue_sme /= total_pixels;
+
+    printf("redSME: %g, greenSME: %g, blueSME: %g\n", red_sme, green_sme, blue_sme);
+    printf("%d different red pixels\n", diffs);
+}
+
 int main(int argv, char** argc)
 {
     printf("Hello, world!\n");
@@ -525,6 +581,7 @@ int main(int argv, char** argc)
         "void main()\n"
         "{\n"
         //"   const vec3 colors[3] = vec3[]( vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0) );\n"
+        //"   FragColor = vec4(round(fColor * 255.0) / 255.0, 1.0);\n"
         "   FragColor = vec4(fColor, 1.0);\n"
         "}\0";
 
@@ -660,6 +717,11 @@ int main(int argv, char** argc)
 
             stbi_write_png("test_cpu.png", width, height, 3, cpu_buffer, width * 3);
             img_write("test_cpu.img", width, height, RGB8UI, cpu_buffer);
+
+            if (memcmp(reference_buffer, cpu_buffer, width * height * 3) != 0)
+                printf("Difference!!\n");
+
+            compare_buffers((uint8_t*)reference_buffer, (uint8_t*)cpu_buffer, width, height);
 
             free(faceID_buffer);
             free(uv_buffer);
