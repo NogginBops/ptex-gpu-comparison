@@ -28,6 +28,8 @@ typedef struct {
     GLenum wrap_s, wrap_t;
     GLenum mag_filter, min_filter;
     bool is_sRGB;
+
+    uint8_t* data;
 } texture_t;
 
 typedef struct {
@@ -62,6 +64,8 @@ framebuffer_t g_frambuffer;
 
 framebuffer_desc g_output_framebuffer_desc;
 framebuffer_t g_output_framebuffer;
+
+texture_t g_tex_test;
 
 void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int width, int height);
 
@@ -390,6 +394,41 @@ void vec3_buffer_to_rgb8_check(vec3_t* buffer, rgb8_t* reference, int width, int
     }
 }
 
+float sRGB_to_linear(float c)
+{
+    if (c <= 0.04045)
+    {
+        return c / 12.92f;
+    }
+    else 
+    {
+        return powf((c + 0.055f) / 1.055f, 2.4f);
+    }
+}
+
+vec3_t sample_texture(const texture_t* tex, float u, float v)
+{
+    int x = (int)(u * tex->width);
+    int y = (int)(v * tex->height);
+
+    int index = (y * tex->width + x) * 4;
+
+    vec3_t color;
+    if (tex->is_sRGB && false)
+    {
+        color.x = sRGB_to_linear(tex->data[index + 0] / 255.0f);
+        color.y = sRGB_to_linear(tex->data[index + 1] / 255.0f);
+        color.z = sRGB_to_linear(tex->data[index + 2] / 255.0f);
+    }
+    else {
+        color.x = (tex->data[index + 0] / 255.0f);
+        color.y = (tex->data[index + 1] / 255.0f);
+        color.z = (tex->data[index + 2] / 255.0f);
+    }
+    
+    return color;
+}
+
 vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3_t* uv_buffer, vec4_t* uv_deriv_buffer, vec3_t background_color)
 {
     vec3_t* cpu_data = (vec3_t*)malloc(width * height * sizeof(vec3_t));
@@ -417,9 +456,11 @@ vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3
 
             vec3_t color = { uv.x, uv.y, uv.z };
 
+            vec3_t tex = sample_texture(&g_tex_test, uv.x, uv.y);
+
             //const rgb8_t colors[] = { {255, 0, 0}, {0, 255, 0}, {0, 0, 255} };
 
-            cpu_data[i] = color;
+            cpu_data[i] = tex;
         }
     }
 
@@ -559,7 +600,7 @@ texture_t create_texture(const char* filepath, texture_desc desc) {
 
     glGenTextures(1, &tex.texture);
 
-    glActiveTexture(0);
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex.texture);
 
     GLenum internal_format = GL_RGBA8;
@@ -567,7 +608,7 @@ texture_t create_texture(const char* filepath, texture_desc desc) {
 
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, tex.width, tex.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img);
 
-    stbi_image_free(img);
+    tex.data = img;
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, desc.wrap_s);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, desc.wrap_t);
@@ -581,7 +622,7 @@ texture_t create_texture(const char* filepath, texture_desc desc) {
     tex.mag_filter = desc.mag_filter;
     tex.min_filter = desc.min_filter;
 
-    //glGenerateMipmap(GL_TEXTURE_2D);
+    glGenerateMipmap(GL_TEXTURE_2D);
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -643,6 +684,8 @@ int main(int argv, char** argc)
         0.5f, -0.5f, 0.0f,
         0.0f, 0.5f, 0.0f,
     };
+
+    // setup "to cpu" output buffer
     {
         color_attachment_desc faceID_desc = {
             GL_R16UI,
@@ -691,7 +734,8 @@ int main(int argv, char** argc)
         g_frambuffer = create_framebuffer(g_framebuffer_desc, width, height);
     }
 
-    {
+    // setup output buffer
+    { 
         color_attachment_desc color_desc = {
             GL_RGB32F,
             GL_RGB,
@@ -721,6 +765,14 @@ int main(int argv, char** argc)
         g_output_framebuffer = create_framebuffer(g_output_framebuffer_desc, width, height);
     }
     
+    texture_desc tex_test_desc = {
+        GL_REPEAT, GL_REPEAT,
+        GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR,
+        false,
+    };
+
+    g_tex_test = create_texture("assets/textures/uv_test.png", tex_test_desc);
+
     mesh_t* mesh = load_obj("assets/models/susanne.obj");
 
     GLuint vao;
@@ -804,6 +856,9 @@ int main(int argv, char** argc)
     mat4_t mvp = mat4_mul_mat4(model, vp);
 
     glUseProgram(program);
+    
+    int tex_location = glGetUniformLocation(program, "tex");
+    glUniform1i(tex_location, 0);
 
     int vp_location = glGetUniformLocation(program, "vp");
     glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*)&mvp);
@@ -920,7 +975,12 @@ int main(int argv, char** argc)
         glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, g_tex_test.texture);
+
         glDrawArrays(GL_TRIANGLES, 0, mesh->num_faces * 3);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, g_output_framebuffer.framebuffer);

@@ -6,8 +6,8 @@ layout (location = 2) out vec4 uv_deriv;
 
 void main()
 {
-   faceID = uint(gl_PrimitiveID + 1);
-   uv = fColor.xyz;
-   uv_deriv.xy = dFdx(fColor.xy);
-   uv_deriv.zw = dFdy(fColor.xy);
+	faceID = uint(gl_PrimitiveID + 1);
+	uv = fColor.xyz;
+	uv_deriv.xy = dFdx(fColor.xy);
+	uv_deriv.zw = dFdy(fColor.xy);
 }
