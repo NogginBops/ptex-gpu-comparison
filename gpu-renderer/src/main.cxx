@@ -411,6 +411,9 @@ vec3_t sample_texture(const texture_t* tex, float u, float v)
     int x = (int)(u * tex->width);
     int y = (int)(v * tex->height);
 
+    assert(x >= 0 && x < tex->width);
+    assert(y >= 0 && y < tex->height);
+
     int index = (y * tex->width + x) * 4;
 
     vec3_t color;
@@ -425,7 +428,7 @@ vec3_t sample_texture(const texture_t* tex, float u, float v)
         color.y = (tex->data[index + 1] / 255.0f);
         color.z = (tex->data[index + 2] / 255.0f);
     }
-    
+
     return color;
 }
 
