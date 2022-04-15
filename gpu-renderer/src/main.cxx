@@ -12,6 +12,23 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
+typedef struct {
+    GLenum wrap_s, wrap_t;
+    GLenum mag_filter, min_filter;
+    bool is_sRGB;
+} texture_desc;
+
+typedef struct {
+    int width;
+    int height;
+    GLuint texture;
+    GLenum wrap_s, wrap_t;
+    GLenum mag_filter, min_filter;
+    bool is_sRGB;
+} texture_t;
 
 typedef struct {
     GLint internal_format;
@@ -39,7 +56,6 @@ typedef struct {
     GLuint* color_attachments;
     GLuint depth_attachment;
 } framebuffer_t;
-
 
 framebuffer_desc g_framebuffer_desc;
 framebuffer_t g_frambuffer;
@@ -73,6 +89,11 @@ void GLFWKeyCallback(GLFWwindow* window, int key, int scancode, int action, int 
     if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
     {
         takeScreenshot = true;
+    }
+
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+    {
+        glfwSetWindowShouldClose(window, true);
     }
 }
 
@@ -308,7 +329,8 @@ typedef struct {
 
 uint8_t convert_float_uint(float f)
 {
-    //return (uint8_t)((f * 255.0f) - 0.0f);
+    //return (uint8_t)((f * 255.0f) + 0.5f);
+    //if (f == 0.5) return 127;
     return (uint8_t)roundf(f * 255.0f);
 }
 
@@ -317,12 +339,64 @@ rgb8_t vec3_to_rgb8(vec3_t vec)
     return { convert_float_uint(vec.x), convert_float_uint(vec.y), convert_float_uint(vec.z) };
 }
 
-void* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec2_t* uv_buffer, vec4_t* uv_deriv_buffer, vec3_t background_color)
+rgb8_t* vec3_buffer_to_rgb8(vec3_t* buffer, int width, int height)
 {
-    rgb8_t* cpu_data = (rgb8_t*)malloc(width * height * sizeof(rgb8_t));
+    rgb8_t* rgb_buffer = (rgb8_t*) malloc(width * height * sizeof(rgb8_t));
+    assert(rgb_buffer != NULL);
+
+    for (int y = 0; y < height; y++)
+    {
+        for (int x = 0; x < width; x++)
+        {
+            int index = y * width + x;
+
+            rgb_buffer[index] = vec3_to_rgb8(buffer[index]);
+        }
+    }
+
+    return rgb_buffer;
+}
+
+void check_u8(const char* label, uint8_t ref, uint8_t res, float original)
+{
+    if (ref != res)
+    {
+        bool round = ((uint8_t)roundf(original * 255.0f)) == ref;
+        bool floor = ((uint8_t)floorf(original * 255.0f)) == ref;
+        bool ceil = ((uint8_t)ceilf(original * 255.0f)) == ref;
+        bool cast = ((uint8_t)(original * 255.0f)) == ref;
+        bool castAddHalf = ((uint8_t)((original * 255.0f) + 0.5f)) == ref;
+        
+        printf("%s: Ref: %3u, Res: %3u, Orig: %g, Round: %u, Floor: %u, Ceil: %u, Cast: %u, Cast+0.5: %u\n", label, ref, res, original * 255.0f, round, floor, ceil, cast, castAddHalf);
+    }
+}
+
+void vec3_buffer_to_rgb8_check(vec3_t* buffer, rgb8_t* reference, int width, int height)
+{
+    for (int y = 0; y < height; y++)
+    {
+        for (int x = 0; x < width; x++)
+        {
+            int index = y * width + x;
+
+            rgb8_t rgb8 = vec3_to_rgb8(buffer[index]);
+
+            rgb8_t ref = reference[index];
+
+            check_u8("red  ", ref.r, rgb8.r, buffer[index].x);
+            check_u8("green", ref.g, rgb8.g, buffer[index].y);
+            check_u8("blue ", ref.b, rgb8.b, buffer[index].z);
+        }
+    }
+}
+
+vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3_t* uv_buffer, vec4_t* uv_deriv_buffer, vec3_t background_color)
+{
+    vec3_t* cpu_data = (vec3_t*)malloc(width * height * sizeof(vec3_t));
     assert(cpu_data != NULL);
 
-    rgb8_t bg = { (uint8_t)(background_color.x * 255), (uint8_t)(background_color.y * 255), (uint8_t)(background_color.z * 255) };
+    vec3_t bg = background_color;
+    //{ (uint8_t)(background_color.x * 255), (uint8_t)(background_color.y * 255), (uint8_t)(background_color.z * 255) };
 
     for (int y = 0; y < height; y++)
     {
@@ -339,20 +413,26 @@ void* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec2_t
             }
 
 
-            vec2_t uv = uv_buffer[i];
+            vec3_t uv = uv_buffer[i];
 
-            vec3_t color = { uv.x, uv.y, 1 - uv.x - uv.y };
+            vec3_t color = { uv.x, uv.y, uv.z };
 
             //const rgb8_t colors[] = { {255, 0, 0}, {0, 255, 0}, {0, 0, 255} };
 
-            cpu_data[i] = vec3_to_rgb8(color);
+            cpu_data[i] = color;
         }
     }
 
     return cpu_data;
 }
 
-float calculate_sme(uint8_t v1, uint8_t v2) 
+float calculate_sme_f32(float v1, float v2)
+{
+    float diff = v1 - v2;
+    return diff * diff;
+}
+
+float calculate_sme_u8(uint8_t v1, uint8_t v2) 
 {
     float f1 = v1 / 255.0f;
     float f2 = v2 / 255.0f;
@@ -362,7 +442,53 @@ float calculate_sme(uint8_t v1, uint8_t v2)
     return diff * diff;
 }
 
-void compare_buffers(uint8_t* reference, uint8_t* result, int width, int height)
+void compare_buffers_rgb32f(float* reference, float* result, int width, int height)
+{
+    float red_sme = 0, green_sme = 0, blue_sme = 0;
+    int diffs = 0;
+
+    for (int y = 0; y < height; y++)
+    {
+        for (int x = 0; x < width; x++)
+        {
+            int i = (y * width + x) * 3;
+
+            float ref_red = reference[i + 0];
+            float ref_green = reference[i + 1];
+            float ref_blue = reference[i + 2];
+
+            float res_red = result[i + 0];
+            float res_green = result[i + 1];
+            float res_blue = result[i + 2];
+
+            float red_diff = calculate_sme_f32(ref_red, res_red);
+            float green_diff = calculate_sme_f32(ref_green, res_green);
+            float blue_diff = calculate_sme_f32(ref_blue, res_blue);
+
+            red_sme += red_diff;
+            green_sme += green_diff;
+            blue_sme += blue_diff;
+
+            if (red_diff != 0 || green_diff != 0 || blue_diff != 0) {
+
+                printf("Diff at (%d, %d). Reference: (%g, %g, %g), Result: (%g, %g, %g)\n", x, y, ref_red, ref_green, ref_blue, res_red, res_green, res_blue);
+
+                diffs++;
+            }
+        }
+    }
+
+    int total_pixels = width * height;
+
+    red_sme /= total_pixels;
+    green_sme /= total_pixels;
+    blue_sme /= total_pixels;
+
+    printf("redSME: %g, greenSME: %g, blueSME: %g\n", red_sme, green_sme, blue_sme);
+    printf("%d different red pixels\n", diffs);
+}
+
+void compare_buffers_rgb8(uint8_t* reference, uint8_t* result, int width, int height)
 {
     float red_sme = 0, green_sme = 0, blue_sme = 0;
     int diffs = 0;
@@ -371,7 +497,7 @@ void compare_buffers(uint8_t* reference, uint8_t* result, int width, int height)
     {
         for (int x = 0; x < width; x++) 
         {
-            int i = y * width + x;
+            int i = (y * width + x) * 3;
 
             int ref_red   = reference[i + 0];
             int ref_green = reference[i + 1];
@@ -381,9 +507,9 @@ void compare_buffers(uint8_t* reference, uint8_t* result, int width, int height)
             int res_green = result[i + 1];
             int res_blue  = result[i + 2];
 
-            float red_diff   = calculate_sme(ref_red, res_red);
-            float green_diff = calculate_sme(ref_green, res_green);
-            float blue_diff  = calculate_sme(ref_blue, res_blue);
+            float red_diff   = calculate_sme_u8(ref_red, res_red);
+            float green_diff = calculate_sme_u8(ref_green, res_green);
+            float blue_diff  = calculate_sme_u8(ref_blue, res_blue);
 
             red_sme += red_diff;
             green_sme += green_diff;
@@ -406,6 +532,60 @@ void compare_buffers(uint8_t* reference, uint8_t* result, int width, int height)
 
     printf("redSME: %g, greenSME: %g, blueSME: %g\n", red_sme, green_sme, blue_sme);
     printf("%d different red pixels\n", diffs);
+}
+
+char* read_file(const char* filepath) {
+    FILE* file = fopen(filepath, "rb");
+
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    char* file_buffer = (char*)malloc(size + 1);
+    assert(file_buffer != NULL);
+
+    file_buffer[size] = 0;
+    fread(file_buffer, size, 1, file);
+
+    fclose(file);
+
+    return file_buffer;
+}
+
+texture_t create_texture(const char* filepath, texture_desc desc) {
+    int channels;
+    texture_t tex;
+    stbi_uc* img = stbi_load(filepath, &tex.width, &tex.height, &channels, 4);
+
+    glGenTextures(1, &tex.texture);
+
+    glActiveTexture(0);
+    glBindTexture(GL_TEXTURE_2D, tex.texture);
+
+    GLenum internal_format = GL_RGBA8;
+    if (desc.is_sRGB) internal_format = GL_SRGB8_ALPHA8;
+
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, tex.width, tex.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img);
+
+    stbi_image_free(img);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, desc.wrap_s);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, desc.wrap_t);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, desc.min_filter);
+
+    tex.wrap_s = desc.wrap_s;
+    tex.wrap_t = desc.wrap_t;
+
+    tex.mag_filter = desc.mag_filter;
+    tex.min_filter = desc.min_filter;
+
+    //glGenerateMipmap(GL_TEXTURE_2D);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    return tex;
 }
 
 int main(int argv, char** argc)
@@ -465,16 +645,16 @@ int main(int argv, char** argc)
     };
     {
         color_attachment_desc faceID_desc = {
-        GL_R16UI,
-        GL_RED_INTEGER,
-        GL_UNSIGNED_INT,
-        GL_REPEAT, GL_REPEAT,
-        GL_LINEAR, GL_LINEAR
+            GL_R16UI,
+            GL_RED_INTEGER,
+            GL_UNSIGNED_INT,
+            GL_REPEAT, GL_REPEAT,
+            GL_LINEAR, GL_LINEAR
         };
 
         color_attachment_desc UV_desc = {
-            GL_RG32F,
-            GL_RG,
+            GL_RGB32F,
+            GL_RGB,
             GL_FLOAT,
             GL_REPEAT, GL_REPEAT,
             GL_LINEAR, GL_LINEAR
@@ -541,9 +721,7 @@ int main(int argv, char** argc)
         g_output_framebuffer = create_framebuffer(g_output_framebuffer_desc, width, height);
     }
     
-
-
-    mesh_t* mesh = load_obj("susanne.obj");
+    mesh_t* mesh = load_obj("assets/models/susanne.obj");
 
     GLuint vao;
     glGenVertexArrays(1, &vao);
@@ -563,41 +741,9 @@ int main(int argv, char** argc)
     glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(vertex_t), (void*)offsetof(vertex_t, normal));
     glEnableVertexAttribArray(2);
 
-    const char* vertexShaderSource = "#version 330 core\n"
-        "layout (location = 0) in vec3 aPos;\n"
-        //"layout (location = 1) in vec2 aUV;\n"
-        "out vec3 fColor;\n"
-        "uniform mat4 vp;"
-        "void main()\n"
-        "{\n"
-        "   const vec3 colors[3] = vec3[]( vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0) );\n"
-        "   fColor = colors[gl_VertexID%3];//vec3(aUV, 0);\n"
-        "   gl_Position = vp * vec4(aPos.x, aPos.y, aPos.z, 1.0);\n"
-        "}\0";
-
-    const char* fragmentShaderSource = "#version 330 core\n"
-        "in vec3 fColor;\n"
-        "out vec4 FragColor;\n"
-        "void main()\n"
-        "{\n"
-        //"   const vec3 colors[3] = vec3[]( vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0) );\n"
-        //"   FragColor = vec4(round(fColor * 255.0) / 255.0, 1.0);\n"
-        "   FragColor = vec4(fColor, 1.0);\n"
-        "}\0";
-
-    const char* outputFragShaderSource = "#version 330 core\n"
-        "in vec3 fColor;\n"
-        "layout (location = 0) out uint faceID;\n"
-        "layout (location = 1) out vec2 uv;\n"
-        "layout (location = 2) out vec4 uv_deriv;\n"
-
-        "void main()\n"
-        "{\n"
-        "   faceID = uint(gl_PrimitiveID + 1);\n"
-        "   uv = fColor.xy;\n"
-        "   uv_deriv.xy = dFdx(fColor.xy);\n"
-        "   uv_deriv.zw = dFdy(fColor.xy);\n"
-        "}\0";
+    const char* vertexShaderSource = read_file("assets/shaders/default.vert");
+    const char* fragmentShaderSource = read_file("assets/shaders/default.frag");
+    const char* outputFragShaderSource = read_file("assets/shaders/output.frag");
 
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
@@ -635,16 +781,16 @@ int main(int argv, char** argc)
     mat4_t view = 
     { {
         {1, 0, -0, -0},
-        {0, 1, 4.37114e-08, -0},
-        {0, -4.37114e-08, 1, -1.5f},
+        {0, 1, 4.37114e-08f, -0},
+        {0, -4.37114e-08f, 1, -1.5f},
         {0, 0, 0, 1}
     } };
 
     mat4_t proj =
     { {
-        {1.73205, 0, 0, 0},
-        {0, 1.73205, 0, 0},
-        {0, 0, -1.00002, -0.200002},
+        {1.73205f, 0, 0, 0},
+        {0, 1.73205f, 0, 0},
+        {0, 0, -1.00002f, -0.200002f},
         {0, 0, -1, 0}
     } };
     
@@ -693,41 +839,58 @@ int main(int argv, char** argc)
             glReadPixels(0, 0, width, height, GL_RED_INTEGER, GL_UNSIGNED_SHORT, faceID_buffer);
 
             glReadBuffer(GL_COLOR_ATTACHMENT1);
-            void* uv_buffer = malloc(width * height * sizeof(vec2_t));
-            glReadPixels(0, 0, width, height, GL_RG, GL_FLOAT, uv_buffer);
+            void* uv_buffer = malloc(width * height * sizeof(vec3_t));
+            glReadPixels(0, 0, width, height, GL_RGB, GL_FLOAT, uv_buffer);
 
             glReadBuffer(GL_COLOR_ATTACHMENT2);
             void* uv_deriv_buffer = malloc(width * height * sizeof(vec4_t));
             glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT, uv_deriv_buffer);
 
             img_write("text_faceID.img", width, height, R16UI, faceID_buffer);
-            img_write("test_uv.img", width, height, RG32F, uv_buffer);
+            img_write("test_uv.img", width, height, RGB32F, uv_buffer);
             img_write("test_uv_deriv.img", width, height, RGBA32F, uv_deriv_buffer);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, g_output_framebuffer.framebuffer);
+
+            vec3_t* reference_buffer = (vec3_t*)malloc(width * height * 3 * sizeof(float));
+            glReadPixels(0, 0, width, height, GL_RGB, GL_FLOAT, reference_buffer);
+
+            stbi_flip_vertically_on_write(true);
+            //stbi_write_png("test_ref.png", width, height, 3, reference_buffer, width * 3 * sizeof(uint8_t));
+            img_write("test_ref.img", width, height, RGB32F, reference_buffer);
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-            void* reference_buffer = malloc(width * height * 3 * sizeof(uint8_t));
-            glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, reference_buffer);
+            rgb8_t* reference_rgb8_buffer = (rgb8_t*)malloc(width * height * 3 * sizeof(uint8_t));
+            glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, reference_rgb8_buffer);
 
-            stbi_flip_vertically_on_write(true);
-            stbi_write_png("test_ref.png", width, height, 3, reference_buffer, width * 3 * sizeof(uint8_t));
-            img_write("test_ref.img", width, height, RGB8UI, reference_buffer);
+            vec3_t* cpu_buffer = calculate_image_cpu(width, height, (uint16_t*)faceID_buffer, (vec3_t*)uv_buffer, (vec4_t*)uv_deriv_buffer, bg_color);
 
-            void* cpu_buffer = calculate_image_cpu(width, height, (uint16_t*)faceID_buffer, (vec2_t*)uv_buffer, (vec4_t*)uv_deriv_buffer, bg_color);
+            //stbi_write_png("test_cpu.png", width, height, 3, cpu_buffer, width * 3);
+            img_write("test_cpu.img", width, height, RGB32F, cpu_buffer);
+            
+            //vec3_buffer_to_rgb8_check(cpu_buffer, reference_rgb8_buffer, width, height);
 
-            stbi_write_png("test_cpu.png", width, height, 3, cpu_buffer, width * 3);
-            img_write("test_cpu.img", width, height, RGB8UI, cpu_buffer);
+            rgb8_t* cpu_rgb8_buffer = vec3_buffer_to_rgb8(cpu_buffer, width, height);
+
+            stbi_write_png("test_ref.png", width, height, 3, reference_rgb8_buffer, width * 3);
+            stbi_write_png("test_cpu.png", width, height, 3, cpu_rgb8_buffer, width * 3);
 
             if (memcmp(reference_buffer, cpu_buffer, width * height * 3) != 0)
                 printf("Difference!!\n");
 
-            compare_buffers((uint8_t*)reference_buffer, (uint8_t*)cpu_buffer, width, height);
+            compare_buffers_rgb32f((float*)reference_buffer, (float*)cpu_buffer, width, height);
+            //compare_buffers_rgb8((uint8_t*)reference_rgb8_buffer, (uint8_t*)cpu_rgb8_buffer, width, height);
+
+            free(reference_rgb8_buffer);
+            free(cpu_rgb8_buffer);
 
             free(faceID_buffer);
             free(uv_buffer);
             free(uv_deriv_buffer);
             free(reference_buffer);
             free(cpu_buffer);
+
             takeScreenshot = false;
         }
 
@@ -751,13 +914,18 @@ int main(int argv, char** argc)
 
         glDrawArrays(GL_TRIANGLES, 0, mesh->num_faces * 3);
         
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, g_output_framebuffer.framebuffer);
         glUseProgram(program);
 
         glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
         glDrawArrays(GL_TRIANGLES, 0, mesh->num_faces * 3);
+
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, g_output_framebuffer.framebuffer);
+
+        glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
         glfwSwapBuffers(window);
     }

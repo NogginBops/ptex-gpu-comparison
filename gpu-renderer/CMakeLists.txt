@@ -39,3 +39,22 @@ target_sources(${TARGET} PRIVATE lib/glad/src/glad.c)
 ######## STB ########
 
 include_directories(lib/stb)
+
+######## Copy asset folder ########
+
+set(ASSETS_SRC "${CMAKE_SOURCE_DIR}/assets")
+set(ASSETS_DST "$<TARGET_FILE_DIR:${TARGET}>/assets")
+
+set(ASSETS_CMD copy_directory)
+set(ASSETS_MSG "Copy assets")
+
+add_custom_command(
+    TARGET ${TARGET} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E echo
+    "${ASSETS_MSG}: ${ASSETS_SRC} to ${ASSETS_DST}"
+)
+add_custom_command(
+    TARGET ${TARGET} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E ${ASSETS_CMD}
+    "${ASSETS_SRC}" "${ASSETS_DST}"
+)
