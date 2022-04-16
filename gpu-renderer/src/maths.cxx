@@ -15,6 +15,7 @@ float float_max(float a, float b) {
 
 float float_lerp(float a, float b, float t) {
     return a + (b - a) * t;
+    //return (1.0f - t) * a + t * b;
 }
 
 float float_clamp(float f, float min, float max) {

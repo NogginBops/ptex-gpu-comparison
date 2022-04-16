@@ -1,4 +1,4 @@
-#include <stdint.h>
+﻿#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -331,6 +331,10 @@ typedef struct {
     uint8_t r, g, b;
 } rgb8_t;
 
+typedef struct {
+    uint8_t r, g, b, a;
+} rgba8_t;
+
 uint8_t convert_float_uint(float f)
 {
     //return (uint8_t)((f * 255.0f) + 0.5f);
@@ -406,27 +410,117 @@ float sRGB_to_linear(float c)
     }
 }
 
-vec3_t sample_texture(const texture_t* tex, float u, float v)
+float tex_coord_wrap(int coord, int size, GLenum mode) 
 {
-    int x = (int)(u * tex->width);
-    int y = (int)(v * tex->height);
+    switch (mode)
+    {
+    case GL_CLAMP_TO_EDGE:
+        if (coord < 0) return 0;
+        else if (coord >= size) return size - 1;
+        else return coord;
+    case GL_REPEAT:
+        return ((coord % size) + size) % size;
+    default:
+        assert(false);
+    }
+}
 
-    assert(x >= 0 && x < tex->width);
-    assert(y >= 0 && y < tex->height);
-
+vec3_t sample_texel(const texture_t* tex, int x, int y) 
+{
     int index = (y * tex->width + x) * 4;
 
     vec3_t color;
+    color.x = (tex->data[index + 0] / 255.0f);
+    color.y = (tex->data[index + 1] / 255.0f);
+    color.z = (tex->data[index + 2] / 255.0f);
+
     if (tex->is_sRGB && false)
     {
-        color.x = sRGB_to_linear(tex->data[index + 0] / 255.0f);
-        color.y = sRGB_to_linear(tex->data[index + 1] / 255.0f);
-        color.z = sRGB_to_linear(tex->data[index + 2] / 255.0f);
+        color.x = sRGB_to_linear(color.x);
+        color.y = sRGB_to_linear(color.y);
+        color.z = sRGB_to_linear(color.z);
     }
-    else {
-        color.x = (tex->data[index + 0] / 255.0f);
-        color.y = (tex->data[index + 1] / 255.0f);
-        color.z = (tex->data[index + 2] / 255.0f);
+
+    return color;
+}
+
+vec3_t sample_texture(const texture_t* tex, vec2_t uv, vec4_t uv_derivatives)
+{
+    float u = uv.x * tex->width;
+    float v = uv.y * tex->height;
+
+    vec3_t color = {0};
+    if (tex->mag_filter == GL_NEAREST && tex->min_filter == GL_NEAREST)
+    {
+        int x = (int)tex_coord_wrap(u, tex->width, tex->wrap_s);
+        int y = (int)tex_coord_wrap(v, tex->height, tex->wrap_t);
+
+        assert(x >= 0 && x < tex->width);
+        assert(y >= 0 && y < tex->height);
+
+        int index = (y * tex->width + x) * 4;
+
+        color = sample_texel(tex, x, y);
+    }
+    else
+    {
+        // See 8.14 in: https://www.khronos.org/registry/OpenGL/specs/gl/glspec45.core.pdf
+
+        /*
+        float dudx = uv_derivatives.x;
+        float dvdx = uv_derivatives.y;
+
+        float dudy = uv_derivatives.z;
+        float dvdy = uv_derivatives.w;
+
+        float rho1 = sqrtf(dudx * dudx + dvdx * dvdx);
+        float rho2 = sqrtf(dudy * dudy + dvdy * dvdy);
+        float rho = rho1 > rho2 ? rho1 : rho2;
+
+        float λ_base = log2f(rho);
+        */
+
+        float uMHalf = u - 0.5f;
+        float vMHalf = v - 0.5f;
+
+        int i0 = tex_coord_wrap((int)floorf(uMHalf), tex->width, tex->wrap_s);
+        int j0 = tex_coord_wrap((int)floorf(vMHalf), tex->height, tex->wrap_t);
+
+        int i1 = tex_coord_wrap((int)floorf(uMHalf) + 1, tex->width, tex->wrap_s);
+        int j1 = tex_coord_wrap((int)floorf(vMHalf) + 1, tex->height, tex->wrap_t);
+
+        assert(i0 >= 0 && i0 < tex->width);
+        assert(i1 >= 0 && i0 < tex->width);
+        assert(j0 >= 0 && i0 < tex->height);
+        assert(j1 >= 0 && i0 < tex->height);
+
+        //float int_part;
+        //float α = modff(uMHalf, &int_part);
+        //float β = modff(vMHalf, &int_part);
+        float α = uMHalf - floorf(uMHalf);
+        float β = vMHalf - floorf(vMHalf);
+
+        assert(α >= 0 && α <= 1.0f);
+        assert(β >= 0 && β <= 1.0f);
+
+        vec3_t τ_i0j0 = sample_texel(tex, i0, j0);
+        vec3_t τ_i0j1 = sample_texel(tex, i0, j1);
+        vec3_t τ_i1j0 = sample_texel(tex, i1, j0);
+        vec3_t τ_i1j1 = sample_texel(tex, i1, j1);
+
+        vec3_t τ_i01j0 = vec3_lerp(τ_i0j0, τ_i1j0, α);
+        vec3_t τ_i01j1 = vec3_lerp(τ_i0j1, τ_i1j1, α);
+
+        vec3_t τ = vec3_lerp(τ_i01j0, τ_i01j1, β);
+
+        /*
+        vec3_t τ_i01j0 = vec3_lerp(τ_i0j0, τ_i0j1, β);
+        vec3_t τ_i01j1 = vec3_lerp(τ_i1j0, τ_i1j1, β);
+
+        vec3_t τ = vec3_lerp(τ_i01j0, τ_i01j1, α);
+        */
+
+        color = τ;
     }
 
     return color;
@@ -457,9 +551,11 @@ vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3
 
             vec3_t uv = uv_buffer[i];
 
+            vec4_t uv_deriv = uv_deriv_buffer[i];
+
             vec3_t color = { uv.x, uv.y, uv.z };
 
-            vec3_t tex = sample_texture(&g_tex_test, uv.x, uv.y);
+            vec3_t tex = sample_texture(&g_tex_test, { uv.x, uv.y }, uv_deriv);
 
             //const rgb8_t colors[] = { {255, 0, 0}, {0, 255, 0}, {0, 0, 255} };
 
@@ -489,6 +585,7 @@ float calculate_sme_u8(uint8_t v1, uint8_t v2)
 void compare_buffers_rgb32f(float* reference, float* result, int width, int height)
 {
     float red_sme = 0, green_sme = 0, blue_sme = 0;
+    float red_max = 0, green_max = 0, blue_max = 0;
     int diffs = 0;
 
     for (int y = 0; y < height; y++)
@@ -505,17 +602,21 @@ void compare_buffers_rgb32f(float* reference, float* result, int width, int heig
             float res_green = result[i + 1];
             float res_blue = result[i + 2];
 
-            float red_diff = calculate_sme_f32(ref_red, res_red);
-            float green_diff = calculate_sme_f32(ref_green, res_green);
-            float blue_diff = calculate_sme_f32(ref_blue, res_blue);
+            float red_diff = ref_red - res_red;
+            float green_diff = ref_green - res_green;
+            float blue_diff = ref_blue - res_blue;
 
-            red_sme += red_diff;
-            green_sme += green_diff;
-            blue_sme += blue_diff;
+            red_sme += red_diff * red_diff;
+            green_sme += green_diff * green_diff;
+            blue_sme += blue_diff * blue_diff;
+
+            if (red_diff > red_max) red_max = red_diff;
+            if (green_diff > green_max) green_max = green_diff;
+            if (blue_diff > blue_max) blue_max = blue_diff;
 
             if (red_diff != 0 || green_diff != 0 || blue_diff != 0) {
 
-                printf("Diff at (%d, %d). Reference: (%g, %g, %g), Result: (%g, %g, %g)\n", x, y, ref_red, ref_green, ref_blue, res_red, res_green, res_blue);
+                //printf("Diff at (%d, %d). Reference: (%g, %g, %g), Result: (%g, %g, %g)\n", x, y, ref_red, ref_green, ref_blue, res_red, res_green, res_blue);
 
                 diffs++;
             }
@@ -528,13 +629,15 @@ void compare_buffers_rgb32f(float* reference, float* result, int width, int heig
     green_sme /= total_pixels;
     blue_sme /= total_pixels;
 
-    printf("redSME: %g, greenSME: %g, blueSME: %g\n", red_sme, green_sme, blue_sme);
-    printf("%d different red pixels\n", diffs);
+    printf("red SME: %g, green SME: %g, blue SME: %g\n", red_sme, green_sme, blue_sme);
+    printf("red MAX: %g, green MAX: %g, blue MAX: %g\n", red_max * 255, green_max * 255, blue_max * 255);
+    printf("%d non-matching pixels\n", diffs);
 }
 
 void compare_buffers_rgb8(uint8_t* reference, uint8_t* result, int width, int height)
 {
     float red_sme = 0, green_sme = 0, blue_sme = 0;
+    float red_max = 0, green_max = 0, blue_max = 0;
     int diffs = 0;
 
     for (int y = 0; y < height; y++)
@@ -543,25 +646,29 @@ void compare_buffers_rgb8(uint8_t* reference, uint8_t* result, int width, int he
         {
             int i = (y * width + x) * 3;
 
-            int ref_red   = reference[i + 0];
-            int ref_green = reference[i + 1];
-            int ref_blue  = reference[i + 2];
+            float ref_red   = reference[i + 0] / 255.0f;
+            float ref_green = reference[i + 1] / 255.0f;
+            float ref_blue  = reference[i + 2] / 255.0f;
             
-            int res_red   = result[i + 0];
-            int res_green = result[i + 1];
-            int res_blue  = result[i + 2];
+            float res_red   = result[i + 0] / 255.0f;
+            float res_green = result[i + 1] / 255.0f;
+            float res_blue  = result[i + 2] / 255.0f;
 
-            float red_diff   = calculate_sme_u8(ref_red, res_red);
-            float green_diff = calculate_sme_u8(ref_green, res_green);
-            float blue_diff  = calculate_sme_u8(ref_blue, res_blue);
+            float red_diff = ref_red - res_red;
+            float green_diff = ref_green - res_green;
+            float blue_diff = ref_blue - res_blue;
 
-            red_sme += red_diff;
-            green_sme += green_diff;
-            blue_sme += blue_diff;
+            red_sme += red_diff * red_diff;
+            green_sme += green_diff * green_diff;
+            blue_sme += blue_diff * blue_diff;
+
+            if (red_diff > red_max) red_max = red_diff;
+            if (green_diff > green_max) green_max = green_diff;
+            if (blue_diff > blue_max) blue_max = blue_diff;
 
             if (red_diff != 0 || green_diff != 0 || blue_diff != 0) {
 
-                printf("Diff at (%d, %d). Reference: (%u, %u, %u), Result: (%u, %u, %u)\n", x, y, ref_red, ref_green, ref_blue, res_red, res_green, res_blue);
+                //printf("Diff at (%d, %d). Reference: (%u, %u, %u), Result: (%u, %u, %u)\n", x, y, ref_red, ref_green, ref_blue, res_red, res_green, res_blue);
 
                 diffs++;
             }
@@ -574,7 +681,8 @@ void compare_buffers_rgb8(uint8_t* reference, uint8_t* result, int width, int he
     green_sme /= total_pixels;
     blue_sme /= total_pixels;
 
-    printf("redSME: %g, greenSME: %g, blueSME: %g\n", red_sme, green_sme, blue_sme);
+    printf("red SME: %g, green SME: %g, blue SME: %g\n", red_sme, green_sme, blue_sme);
+    printf("red MAX: %g, green MAX: %g, blue MAX: %g\n", red_max * 255.0f, green_max * 255.0f, blue_max * 255.0f);
     printf("%d different red pixels\n", diffs);
 }
 
@@ -770,11 +878,11 @@ int main(int argv, char** argc)
     
     texture_desc tex_test_desc = {
         GL_REPEAT, GL_REPEAT,
-        GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR,
+        GL_LINEAR, GL_LINEAR,
         false,
     };
 
-    g_tex_test = create_texture("assets/textures/uv_test.png", tex_test_desc);
+    g_tex_test = create_texture("assets/textures/uv_test_smaller.png", tex_test_desc);
 
     mesh_t* mesh = load_obj("assets/models/susanne.obj");
 
@@ -863,12 +971,12 @@ int main(int argv, char** argc)
     int tex_location = glGetUniformLocation(program, "tex");
     glUniform1i(tex_location, 0);
 
-    int vp_location = glGetUniformLocation(program, "vp");
+    int vp_location = glGetUniformLocation(program, "mvp");
     glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*)&mvp);
 
     glUseProgram(outputProgram);
 
-    vp_location = glGetUniformLocation(program, "vp");
+    vp_location = glGetUniformLocation(outputProgram, "mvp");
     glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*)&mvp);
 
     glEnable(GL_DEPTH_TEST);
@@ -919,8 +1027,10 @@ int main(int argv, char** argc)
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-            rgb8_t* reference_rgb8_buffer = (rgb8_t*)malloc(width * height * 3 * sizeof(uint8_t));
-            glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, reference_rgb8_buffer);
+
+            rgb8_t* reference_rgb8_buffer = vec3_buffer_to_rgb8(reference_buffer, width, height);
+            //rgb8_t* reference_rgb8_buffer = (rgb8_t*)malloc(width * height * 3 * sizeof(uint8_t));
+            //glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, reference_rgb8_buffer);
 
             vec3_t* cpu_buffer = calculate_image_cpu(width, height, (uint16_t*)faceID_buffer, (vec3_t*)uv_buffer, (vec4_t*)uv_deriv_buffer, bg_color);
 
@@ -938,7 +1048,7 @@ int main(int argv, char** argc)
                 printf("Difference!!\n");
 
             compare_buffers_rgb32f((float*)reference_buffer, (float*)cpu_buffer, width, height);
-            //compare_buffers_rgb8((uint8_t*)reference_rgb8_buffer, (uint8_t*)cpu_rgb8_buffer, width, height);
+            compare_buffers_rgb8((uint8_t*)reference_rgb8_buffer, (uint8_t*)cpu_rgb8_buffer, width, height);
 
             free(reference_rgb8_buffer);
             free(cpu_rgb8_buffer);
@@ -973,7 +1083,10 @@ int main(int argv, char** argc)
         glDrawArrays(GL_TRIANGLES, 0, mesh->num_faces * 3);
         
         glBindFramebuffer(GL_FRAMEBUFFER, g_output_framebuffer.framebuffer);
+
         glUseProgram(program);
+
+        glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*)&mvp);
 
         glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
