@@ -15,6 +15,9 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#include <Ptexture.h>
+#include <iostream>
+
 typedef struct {
     GLenum wrap_s, wrap_t;
     GLenum mag_filter, min_filter;
@@ -742,10 +745,37 @@ texture_t create_texture(const char* filepath, texture_desc desc) {
 
 int main(int argv, char** argc)
 {
+    Ptex::String error_str;
+    Ptex::PtexTexture* p_texture = PtexTexture::open("assets/models/teapot/teapot.ptx", error_str);
+
+    if (error_str.empty() == false)
+    {
+        printf("Ptex Error! %s\n", error_str.c_str());
+    }
+
+    char* meshTypeString[] = { "mt_triangle", "mt_quad" };
+    char* dataTypeString[] = { "dt_uint8", "dt_uint16", "dt_half", "dt_float" };
+    char* borderModeString[] = { "m_clamp", "m_black", "m_periodic" };
+    char* edgeFilterModeString[] = { "efm_none", "efm_tanvec" };
+
+    auto info = p_texture->getInfo();
+    std::cout << "meshType: " << meshTypeString[info.meshType] << std::endl;
+    std::cout << "dataType: " << dataTypeString[info.dataType] << std::endl;
+    std::cout << "uBorderMode: " << borderModeString[info.uBorderMode] << std::endl;
+    std::cout << "vBorderMode: " << borderModeString[info.vBorderMode] << std::endl;
+    std::cout << "edgeFilterMode: " << edgeFilterModeString[info.edgeFilterMode] << std::endl;
+    std::cout << "alphaChannel: " << info.alphaChannel << std::endl;
+    std::cout << "numChannels: " << info.numChannels << std::endl;
+    std::cout << "numFaces: " << info.numFaces << std::endl;
+
+    p_texture->release();
+
+    mesh_t* teapot_mesh = load_obj("assets/models/teapot/teapot.obj");
+
     printf("Hello, world!\n");
 
     glfwSetErrorCallback(GLFWErrorCallback);
-
+    
     if (glfwInit() == GLFW_FALSE)
     {
         printf("Failed to initialize GLFW\n");

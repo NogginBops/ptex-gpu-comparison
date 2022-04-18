@@ -40,6 +40,13 @@ target_sources(${TARGET} PRIVATE lib/glad/src/glad.c)
 
 include_directories(lib/stb)
 
+######## PTEX ########
+
+set(PTEX_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+add_subdirectory(lib/ptex)
+target_link_libraries(${TARGET} Ptex)
+
 ######## Copy asset folder ########
 
 set(ASSETS_SRC "${CMAKE_SOURCE_DIR}/assets")
