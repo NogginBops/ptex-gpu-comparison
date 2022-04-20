@@ -283,9 +283,12 @@ int img_pixel_size_from_format(int format)
 void img_write(const char* filename, int width, int height, int format, const void* data)
 {
     FILE* file;
+#if defined(_MSC_VER) && _MSC_VER >= 1400
     errno_t err = fopen_s(&file, filename, "wb");
     assert(err == 0 && "Could not open file!");
-    
+#else
+    file = fopen(filename, "wb");
+#endif
     fwrite("img", 3, 1, file);
 
     int32_t header[] = { width, height, format };
@@ -303,9 +306,12 @@ void img_write(const char* filename, int width, int height, int format, const vo
 void* img_read(const char* filename, int* width, int* height, int* format)
 {
     FILE* file;
+#if defined(_MSC_VER) && _MSC_VER >= 1400
     errno_t err = fopen_s(&file, filename, "wb");
     assert(err == 0 && "Could not open file");
-
+#else
+    file = fopen(filename, "wb");
+#endif
     char magic[3];
     fread(magic, 3, 1, file);
     
@@ -770,7 +776,7 @@ int main(int argv, char** argc)
 
     p_texture->release();
 
-    mesh_t* teapot_mesh = load_obj("assets/models/teapot/teapot.obj");
+    //mesh_t* teapot_mesh = load_obj("assets/models/teapot/teapot.obj");
 
     printf("Hello, world!\n");
 
