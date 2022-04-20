@@ -319,8 +319,8 @@ void* img_read(const char* filename, int* width, int* height, int* format)
     fread(height, 4, 1, file);
     fread(format, 4, 1, file);
 
-    assert(width >= 0 && "Width cannot be negative");
-    assert(height >= 0 && "Height cannot be negative");
+    assert(*width >= 0 && "Width cannot be negative");
+    assert(*height >= 0 && "Height cannot be negative");
 
     int pixel_size = img_pixel_size_from_format(*format);
     
