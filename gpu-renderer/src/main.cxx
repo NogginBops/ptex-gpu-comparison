@@ -625,7 +625,7 @@ void compare_buffers_rgb32f(float* reference, float* result, int width, int heig
 
             if (red_diff != 0 || green_diff != 0 || blue_diff != 0) {
 
-                //printf("Diff at (%d, %d). Reference: (%g, %g, %g), Result: (%g, %g, %g)\n", x, y, ref_red, ref_green, ref_blue, res_red, res_green, res_blue);
+                printf("Diff at (%d, %d). Reference: (%g, %g, %g), Result: (%g, %g, %g)\n", x, height - y, ref_red, ref_green, ref_blue, res_red, res_green, res_blue);
 
                 diffs++;
             }
@@ -693,6 +693,129 @@ void compare_buffers_rgb8(uint8_t* reference, uint8_t* result, int width, int he
     printf("red SME: %g, green SME: %g, blue SME: %g\n", red_sme, green_sme, blue_sme);
     printf("red MAX: %g, green MAX: %g, blue MAX: %g\n", red_max * 255.0f, green_max * 255.0f, blue_max * 255.0f);
     printf("%d different red pixels\n", diffs);
+}
+
+float mse_rgb32f(const float* reference, const float* result, const int width, const int height)
+{
+    unsigned int color_num = 0;
+    unsigned int tot_num_pixels = width * height;
+    unsigned int tot_num_colors = tot_num_pixels * 3;
+    float color_error_sum = 0;
+
+    for (; color_num < tot_num_colors; color_num++)
+    {
+        color_error_sum += (float) pow(reference[color_num] - result[color_num], 2);
+    }
+
+    return color_error_sum / (float) tot_num_pixels;
+}
+
+float psnr_buffers_rgb32f(const float* reference, const float* result, const int width, const int height)
+{
+    float mse = mse_rgb32f(reference, result, width, height);
+    float max_pixel_val = 255;
+
+    return 20 * log10(max_pixel_val / sqrt(mse));
+}
+
+float pixel_rgb_mean(const float* img_rgb_vals, const int width, const int height) {
+    unsigned int color_num = 0;
+    unsigned int tot_num_pixels = width * height;
+    unsigned int tot_num_colors = tot_num_pixels * 3;
+    float color_sum = 0;
+
+    for (; color_num < tot_num_colors; color_num++)
+    {
+        color_sum += img_rgb_vals[color_num];
+    }
+
+    return color_sum / (float) tot_num_pixels;
+}
+
+float pixel_rgb_sd(const float* img_rgb_vals, const int width, const int height) {
+    unsigned int color_num = 0;
+    unsigned int tot_num_pixels = width * height;
+    unsigned int tot_num_colors = tot_num_pixels * 3;
+    float color_sum = 0;
+    float pixel_rgb_avg = pixel_rgb_mean(img_rgb_vals, width, height);
+
+    for (; color_num < tot_num_colors; color_num++)
+    {
+        color_sum += (float) pow(img_rgb_vals[color_num] - pixel_rgb_avg, 2);
+    }
+
+    return sqrt(1 / ((float) tot_num_pixels - 1) * color_sum);
+}
+
+float* pixel_rgb_structure(const float* img_rgb_vals, const int width, const int height)
+{
+    float pixel_rgb_avg = pixel_rgb_mean(img_rgb_vals, width, height);
+    float pixel_sd = pixel_rgb_sd(img_rgb_vals, width, height);
+    unsigned int tot_num_pixels = width * height;
+    unsigned int structure_pixel_num = 0;
+    unsigned int img_pixel_num = 0;
+    auto* structure = new float[tot_num_pixels];
+
+    for (; structure_pixel_num < tot_num_pixels; structure_pixel_num++)
+    {
+        img_pixel_num = structure_pixel_num * 3;
+        structure[structure_pixel_num] = (img_rgb_vals[structure_pixel_num]
+                                          + img_rgb_vals[structure_pixel_num + 1]
+                                          + img_rgb_vals[structure_pixel_num + 2]
+                                          - pixel_rgb_avg) / pixel_sd;
+    }
+
+    return structure;
+}
+
+float compare_luminance(const float* img1_rgb_vals, const float* img2_rgb_vals, const int width, const int height)
+{
+    float mu_x = pixel_rgb_mean(img1_rgb_vals, width, height);
+    float mu_y = pixel_rgb_mean(img2_rgb_vals, width, height);
+    float k_1 = 1;
+    float l = 255.f;
+    auto c_1 = (float) pow(k_1 * l, 2);
+
+    return (2 * mu_x * mu_y + c_1)/(pow(mu_x, 2) + pow(mu_y, 2) + c_1);
+}
+
+float compare_contrast(const float* img1_rgb_vals, const float* img2_rgb_vals, const int width, const int height)
+{
+    float sigma_x = pixel_rgb_sd(img1_rgb_vals, width, height);
+    float sigma_y = pixel_rgb_sd(img2_rgb_vals, width, height);
+    float k_2 = 1;
+    float l = 255.f;
+    auto c_2 = (float) pow(k_2 * l, 2);
+
+    return (2 * sigma_x * sigma_y + c_2) / (pow(sigma_x, 2) + pow(sigma_y, 2) + c_2);
+}
+
+float pixel_rgb_combined_sd(const float* img1_rgb_vals, const float* img2_rgb_vals, const int width, const int height) {
+    unsigned int tot_num_pixels = width * height;
+    unsigned int pixel_num = 0;
+
+    for (; pixel_num < tot_num_pixels; pixel_num++)
+    {
+
+    }
+
+    return (1 / (tot_num_pixels - 1))
+}
+
+float compare_structure(const float* img1_rgb_vals, const float* img2_rgb_vals, const int width, const int height)
+{
+
+}
+
+float ssim_buffers_rgb32f(const float* reference, const float* result, const int width, const int height)
+{
+    float ref_luminance = pixel_rgb_mean(reference, width, height);
+    float ref_contrast = pixel_rgb_sd(reference, width, height);
+    float* ref_structure = pixel_rgb_structure(reference, width, height);
+
+    float res_luminance = pixel_rgb_mean(result, width, height);
+    float res_contrast = pixel_rgb_sd(result, width, height);
+    float* res_structure = pixel_rgb_structure(result, width, height);
 }
 
 char* read_file(const char* filepath) {
@@ -822,9 +945,9 @@ int main(int argv, char** argc)
     const char* version = (char*)glGetString(GL_VERSION);
     glfwSetWindowTitle(window, version);
     
-    glDebugMessageCallback(GLDebugCallback, NULL);
-    glEnable(GL_DEBUG_OUTPUT);
-    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+    //glDebugMessageCallback(GLDebugCallback, NULL);
+    //glEnable(GL_DEBUG_OUTPUT);
+    //glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 
     float vertices[] = {
         -0.5f, -0.5f, 0.0f,
@@ -914,11 +1037,11 @@ int main(int argv, char** argc)
     
     texture_desc tex_test_desc = {
         GL_REPEAT, GL_REPEAT,
-        GL_LINEAR, GL_LINEAR,
+        GL_NEAREST, GL_NEAREST,
         false,
     };
 
-    g_tex_test = create_texture("assets/textures/uv_test_smaller.png", tex_test_desc);
+    g_tex_test = create_texture("assets/textures/uv_test.png", tex_test_desc);
 
     mesh_t* mesh = load_obj("assets/models/susanne.obj");
 
