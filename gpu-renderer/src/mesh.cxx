@@ -95,6 +95,13 @@ mesh_t * load_obj(const char* filename) {
         }
         else if (strncmp(line, "f ", 2) == 0) {               /* face */
             int i;
+
+            int spaces = 0;
+            for (int i = 0; line[i] != 0; i++)
+            {
+                if (line[i] == ' ') spaces++;
+            }
+
             int pos_indices[3], uv_indices[3], n_indices[3];
             items = sscanf(line, "f %d/%d/%d %d/%d/%d %d/%d/%d",
                 &pos_indices[0], &uv_indices[0], &n_indices[0],
@@ -116,4 +123,102 @@ mesh_t * load_obj(const char* filename) {
     return mesh;
 }
 
+ptex_mesh_t* build_ptex_mesh(
+    const std::vector<vec3_t>& positions,
+    const std::vector<vec3_t>& normals,
+    const std::vector<int>& position_indices,
+    const std::vector<int>& normal_indices) {
+    
+    vec3_t bbox_min = vec3_new(+1e6, +1e6, +1e6);
+    vec3_t bbox_max = vec3_new(-1e6, -1e6, -1e6);
+    int num_indices = position_indices.size();
+    int num_faces = num_indices / 4;
+
+    assert(num_faces > 0 && num_faces * 4 == num_indices);
+    assert(position_indices.size() == num_indices);
+    assert(normal_indices.size() == num_indices);
+
+    ptex_vertex_t* vertices = (ptex_vertex_t*)malloc(sizeof(ptex_vertex_t) * num_indices);
+    assert(vertices != NULL);
+    for (int i = 0; i < num_indices; i++) {
+        int position_index = position_indices[i];
+        int normal_index = normal_indices[i];
+        assert(position_index >= 0 && position_index < positions.size());
+        assert(normal_index >= 0 && normal_index < normals.size());
+        vertices[i].position = positions[position_index];
+        vertices[i].normal = normals[normal_index];
+
+        bbox_min = vec3_min(bbox_min, vertices[i].position);
+        bbox_max = vec3_max(bbox_max, vertices[i].position);
+    }
+
+    ptex_mesh_t* mesh = (ptex_mesh_t*)malloc(sizeof(ptex_mesh_t));
+    mesh->num_quads = num_faces;
+    mesh->vertices = vertices;
+    mesh->center = vec3_div(vec3_add(bbox_min, bbox_max), 2);
+
+    return mesh;
+}
+
+ptex_mesh_t* load_ptex_obj(const char* filename) {
+    std::vector<int> position_indices;
+    std::vector<int> normal_indices;
+    char line[LINE_SIZE];
+    mesh_t* mesh;
+    FILE* file;
+
+    std::vector<vec3_t> positions = {};
+    std::vector<vec3_t> normals = {};
+
+    file = fopen(filename, "rb");
+    assert(file != NULL);
+    while (1)
+    {
+        int items;
+        if (fgets(line, LINE_SIZE, file) == NULL) {
+            break;
+        }
+        else if (strncmp(line, "v ", 2) == 0) {               /* position */
+            vec3_t position;
+            items = sscanf(line, "v %f %f %f",
+                &position.x, &position.y, &position.z);
+            assert(items == 3);
+            positions.push_back(position);
+        }
+        else if (strncmp(line, "vt ", 3) == 0) {              /* texcoord */
+            assert(false);
+        }
+        else if (strncmp(line, "vn ", 3) == 0) {              /* normal */
+            vec3_t normal;
+            items = sscanf(line, "vn %f %f %f",
+                &normal.x, &normal.y, &normal.z);
+            assert(items == 3);
+            normals.push_back(normal);
+        }
+        else if (strncmp(line, "f ", 2) == 0) {               /* face */
+            int i;
+
+            int spaces = 0;
+            for (int i = 0; line[i] != 0; i++)
+            {
+                if (line[i] == ' ') spaces++;
+            }
+
+            int pos_indices[4], n_indices[4];
+            items = sscanf(line, "f %d//%d %d//%d %d//%d %d//%d",
+                &pos_indices[0], &n_indices[0],
+                &pos_indices[1], &n_indices[1],
+                &pos_indices[2], &n_indices[2],
+                &pos_indices[3], &n_indices[3]);
+            assert(items == 8);
+            for (i = 0; i < 4; i++) {
+                position_indices.push_back(pos_indices[i] - 1);
+                normal_indices.push_back(n_indices[i] - 1);
+            }
+        }
+        UNUSED_VAR(items);
+    }
+
+    return build_ptex_mesh(positions, normals, position_indices, normal_indices);
+}
 

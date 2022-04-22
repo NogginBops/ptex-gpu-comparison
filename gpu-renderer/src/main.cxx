@@ -70,6 +70,9 @@ framebuffer_t g_output_framebuffer;
 
 texture_t g_tex_test;
 
+Ptex::PtexTexture* g_ptex_texture;
+Ptex::PtexFilter* g_ptex_filter;
+
 void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int width, int height);
 
 void GLFWErrorCallback(int error_code, const char* description)
@@ -104,7 +107,7 @@ void GLFWKeyCallback(GLFWwindow* window, int key, int scancode, int action, int 
     }
 }
 
-void checkShaderError(int shader) 
+void check_shader_error(int shader) 
 {
     int success;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
@@ -121,7 +124,7 @@ void checkShaderError(int shader)
     }
 }
 
-void checkLinkError(int program)
+void check_link_error(int program)
 {
     int success;
     glGetProgramiv(program, GL_LINK_STATUS, &success);
@@ -535,6 +538,28 @@ vec3_t sample_texture(const texture_t* tex, vec2_t uv, vec4_t uv_derivatives)
     return color;
 }
 
+vec3_t sample_ptex_texture(Ptex::PtexTexture* tex, Ptex::PtexFilter* filter, int faceID, vec2_t uv, vec4_t uv_derivatives)
+{
+    //assert(faceID < tex->numFaces());
+
+    if (faceID >= tex->numFaces())
+        return { 1.0f, 0.0f, 1.0f };
+
+    if (tex->numChannels() == 1)
+    {
+        float gray;
+        filter->eval(&gray, 0, 1, faceID, uv.x, uv.y, uv_derivatives.x, uv_derivatives.y, uv_derivatives.z, uv_derivatives.w);
+        return { gray, gray, gray };
+    }
+    else if (tex->numChannels() == 3)
+    {
+        vec3_t color;
+        filter->eval((float*) &color, 0, 1, faceID, uv.x, uv.y, uv_derivatives.x, uv_derivatives.y, uv_derivatives.z, uv_derivatives.w);
+        return color;
+    }
+    else assert(false);
+}
+
 vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3_t* uv_buffer, vec4_t* uv_deriv_buffer, vec3_t background_color)
 {
     vec3_t* cpu_data = (vec3_t*)malloc(width * height * sizeof(vec3_t));
@@ -566,9 +591,11 @@ vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3
 
             vec3_t tex = sample_texture(&g_tex_test, { uv.x, uv.y }, uv_deriv);
 
+            vec3_t ptex = sample_ptex_texture(g_ptex_texture, g_ptex_filter, id, { uv.x, uv.y }, uv_deriv);
+
             //const rgb8_t colors[] = { {255, 0, 0}, {0, 255, 0}, {0, 0, 255} };
 
-            cpu_data[i] = tex;
+            cpu_data[i] = ptex;
         }
     }
 
@@ -752,7 +779,7 @@ texture_t create_texture(const char* filepath, texture_desc desc) {
 int main(int argv, char** argc)
 {
     Ptex::String error_str;
-    Ptex::PtexTexture* p_texture = PtexTexture::open("assets/models/teapot/teapot.ptx", error_str);
+    g_ptex_texture = PtexTexture::open("assets/models/teapot/teapot.ptx", error_str);
 
     if (error_str.empty() == false)
     {
@@ -764,7 +791,7 @@ int main(int argv, char** argc)
     char* borderModeString[] = { "m_clamp", "m_black", "m_periodic" };
     char* edgeFilterModeString[] = { "efm_none", "efm_tanvec" };
 
-    auto info = p_texture->getInfo();
+    auto info = g_ptex_texture->getInfo();
     std::cout << "meshType: " << meshTypeString[info.meshType] << std::endl;
     std::cout << "dataType: " << dataTypeString[info.dataType] << std::endl;
     std::cout << "uBorderMode: " << borderModeString[info.uBorderMode] << std::endl;
@@ -774,9 +801,34 @@ int main(int argv, char** argc)
     std::cout << "numChannels: " << info.numChannels << std::endl;
     std::cout << "numFaces: " << info.numFaces << std::endl;
 
-    p_texture->release();
+    g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ PtexFilter::FilterType::f_point, false, 0, false });
 
-    //mesh_t* teapot_mesh = load_obj("assets/models/teapot/teapot.obj");
+    float* sample = (float*)malloc(g_ptex_texture->numChannels() * sizeof(float));
+    g_ptex_filter->eval(sample, 0, g_ptex_texture->numChannels(), 0, 0, 0, 0, 0, 0, 0);
+
+    for (size_t i = 0; i < g_ptex_texture->numFaces(); i++)
+    {
+        Ptex::FaceInfo info = g_ptex_texture->getFaceInfo(i);
+
+        std::cout << "faceID: " << i << std::endl;
+        std::cout << "u: " << info.res.u() << ", v: " << info.res.v() << std::endl;
+        for (size_t i = 0; i < 4; i++)
+        {
+            auto id = info.adjedge(i);
+            const char* name;
+            switch (id) {
+            case Ptex::EdgeId::e_bottom: name = "bottom"; break;
+            case Ptex::EdgeId::e_left: name = "left"; break;
+            case Ptex::EdgeId::e_right: name = "right"; break;
+            case Ptex::EdgeId::e_top: name = "top"; break;
+            default: name = "unknown"; break;
+            }
+            std::cout << name << " ";
+        }
+        std::cout << std::endl;
+    }
+
+    ptex_mesh_t* teapot_mesh = load_ptex_obj("assets/models/teapot/teapot.obj");
 
     printf("Hello, world!\n");
 
@@ -914,11 +966,11 @@ int main(int argv, char** argc)
     
     texture_desc tex_test_desc = {
         GL_REPEAT, GL_REPEAT,
-        GL_LINEAR, GL_LINEAR,
+        GL_NEAREST, GL_NEAREST,
         false,
     };
 
-    g_tex_test = create_texture("assets/textures/uv_test_smaller.png", tex_test_desc);
+    g_tex_test = create_texture("assets/textures/uv_test.png", tex_test_desc);
 
     mesh_t* mesh = load_obj("assets/models/susanne.obj");
 
@@ -947,31 +999,31 @@ int main(int argv, char** argc)
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
     glCompileShader(vertexShader);
-    checkShaderError(vertexShader);
+    check_shader_error(vertexShader);
 
 
     GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
     glCompileShader(fragmentShader);
-    checkShaderError(fragmentShader);
+    check_shader_error(fragmentShader);
 
     GLuint outputFragShader = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(outputFragShader, 1, &outputFragShaderSource, NULL);
     glCompileShader(outputFragShader);
-    checkShaderError(outputFragShader);
+    check_shader_error(outputFragShader);
 
     GLuint program = glCreateProgram();
 
     glAttachShader(program, vertexShader);
     glAttachShader(program, fragmentShader);
     glLinkProgram(program);
-    checkLinkError(program);
+    check_link_error(program);
 
     GLuint outputProgram = glCreateProgram();
     glAttachShader(outputProgram, vertexShader);
     glAttachShader(outputProgram, outputFragShader);
     glLinkProgram(outputProgram);
-    checkLinkError(outputProgram);
+    check_link_error(outputProgram);
 
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
@@ -1141,6 +1193,9 @@ int main(int argv, char** argc)
 
         glfwSwapBuffers(window);
     }
+
+    g_ptex_filter->release();
+    g_ptex_texture->release();
 
     glfwTerminate();
     return EXIT_SUCCESS;

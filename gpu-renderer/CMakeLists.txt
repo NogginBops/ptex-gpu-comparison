@@ -40,6 +40,10 @@ target_sources(${TARGET} PRIVATE lib/glad/src/glad.c)
 
 include_directories(lib/stb)
 
+######## tinyobj ########
+
+include_directories(lib/tinyobj)
+
 ######## PTEX ########
 
 set(PTEX_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
