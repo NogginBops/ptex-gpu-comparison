@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "mesh.hh"
+#include "mesh_loading.hh"
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -17,6 +18,9 @@
 
 #include <Ptexture.h>
 #include <iostream>
+
+#include "util.hh"
+#include "gl_utils.hh"
 
 typedef struct {
     GLenum wrap_s, wrap_t;
@@ -35,33 +39,6 @@ typedef struct {
     uint8_t* data;
 } texture_t;
 
-typedef struct {
-    GLint internal_format;
-    GLenum format;
-    GLenum type;
-    GLenum warp_s, wrap_t;
-    GLenum mag_filter, min_filter;
-} color_attachment_desc;
-
-typedef struct {
-    GLint internal_format;
-    GLenum warp_s, wrap_t;
-    GLenum mag_filter, min_filter;
-} depth_attachment_desc;
-
-typedef struct {
-    int n_color_attachments;
-    color_attachment_desc* color_attachments;
-    depth_attachment_desc* depth_attachment;
-} framebuffer_desc;
-
-typedef struct {
-    GLuint framebuffer;
-    int n_color_attachments;
-    GLuint* color_attachments;
-    GLuint depth_attachment;
-} framebuffer_t;
-
 framebuffer_desc g_framebuffer_desc;
 framebuffer_t g_frambuffer;
 
@@ -72,8 +49,6 @@ texture_t g_tex_test;
 
 Ptex::PtexTexture* g_ptex_texture;
 Ptex::PtexFilter* g_ptex_filter;
-
-void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int width, int height);
 
 void GLFWErrorCallback(int error_code, const char* description)
 {
@@ -105,146 +80,6 @@ void GLFWKeyCallback(GLFWwindow* window, int key, int scancode, int action, int 
     {
         glfwSetWindowShouldClose(window, true);
     }
-}
-
-void check_shader_error(int shader) 
-{
-    int success;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (success == 0)
-    {
-        int log_length;
-        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &log_length);
-        char* log = (char*)malloc(log_length * sizeof(char));
-        glGetShaderInfoLog(shader, log_length, NULL, log);
-
-        fprintf(stderr, "Error: %s\n", log);
-
-        free(log);
-    }
-}
-
-void check_link_error(int program)
-{
-    int success;
-    glGetProgramiv(program, GL_LINK_STATUS, &success);
-    if (success == 0)
-    {
-        int log_length;
-        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &log_length);
-        char* log = (char*)malloc(log_length * sizeof(char));
-        glGetProgramInfoLog(program, log_length, NULL, log);
-
-        fprintf(stderr, "Link error: %s\n", log);
-
-        free(log);
-    }
-}
-
-GLuint create_color_attachment_texture(color_attachment_desc desc, int width, int height) {
-    GLuint texture;
-    glGenTextures(1, &texture);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, desc.internal_format, width, height, 0, desc.format, desc.type, NULL);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, desc.warp_s);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, desc.wrap_t);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, desc.min_filter);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
-
-    return texture;
-}
-
-GLuint create_depth_attachment_texture(depth_attachment_desc desc, int width, int height) {
-    GLuint texture;
-    glGenTextures(1, &texture);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, desc.internal_format, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, desc.warp_s);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, desc.wrap_t);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, desc.min_filter);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
-
-    return texture;
-}
-
-framebuffer_t create_framebuffer(framebuffer_desc desc, int width, int height) 
-{
-    framebuffer_t framebuffer = {0};
-
-    glGenFramebuffers(1, &framebuffer.framebuffer);
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
-
-    if (desc.depth_attachment)
-    {
-        framebuffer.depth_attachment = create_depth_attachment_texture(*desc.depth_attachment, width, height);
-        
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, framebuffer.depth_attachment, 0);
-    }
-
-    framebuffer.color_attachments = new GLuint[desc.n_color_attachments];
-    framebuffer.n_color_attachments = desc.n_color_attachments;
-    for (int i = 0; i < desc.n_color_attachments; i++)
-    {
-        framebuffer.color_attachments[i] = create_color_attachment_texture(desc.color_attachments[i], width, height);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, framebuffer.color_attachments[i], 0);
-    }
-
-    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-    if (status != GL_FRAMEBUFFER_COMPLETE)
-    {
-        printf("Framebuffer not complete! Code: %d\n", status);
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    return framebuffer;
-}
-
-void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int width, int height)
-{
-    glDeleteTextures(framebuffer->n_color_attachments, framebuffer->color_attachments);
-    glDeleteTextures(1, &framebuffer->depth_attachment);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer->framebuffer);
-
-    if (desc.depth_attachment)
-    {
-        framebuffer->depth_attachment = create_depth_attachment_texture(*desc.depth_attachment, width, height);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, framebuffer->depth_attachment, 0);
-    }
-
-    if (desc.n_color_attachments != framebuffer->n_color_attachments)
-    {
-        delete[] framebuffer->color_attachments;
-        framebuffer->color_attachments = new GLuint[desc.n_color_attachments];
-    }
-    
-    framebuffer->n_color_attachments = desc.n_color_attachments;
-    for (int i = 0; i < desc.n_color_attachments; i++)
-    {
-        framebuffer->color_attachments[i] = create_color_attachment_texture(desc.color_attachments[i], width, height);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + 1, GL_TEXTURE_2D, framebuffer->color_attachments[i], 0);
-    }
-
-    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-    if (status != GL_FRAMEBUFFER_COMPLETE)
-    {
-        printf("Framebuffer not complete! Code: %d\n", status);
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 #define R8UI 1
@@ -722,24 +557,6 @@ void compare_buffers_rgb8(uint8_t* reference, uint8_t* result, int width, int he
     printf("%d different red pixels\n", diffs);
 }
 
-char* read_file(const char* filepath) {
-    FILE* file = fopen(filepath, "rb");
-
-    fseek(file, 0, SEEK_END);
-    long size = ftell(file);
-    fseek(file, 0, SEEK_SET);
-
-    char* file_buffer = (char*)malloc(size + 1);
-    assert(file_buffer != NULL);
-
-    file_buffer[size] = 0;
-    fread(file_buffer, size, 1, file);
-
-    fclose(file);
-
-    return file_buffer;
-}
-
 texture_t create_texture(const char* filepath, texture_desc desc) {
     int channels;
     texture_t tex;
@@ -806,6 +623,7 @@ int main(int argv, char** argc)
     float* sample = (float*)malloc(g_ptex_texture->numChannels() * sizeof(float));
     g_ptex_filter->eval(sample, 0, g_ptex_texture->numChannels(), 0, 0, 0, 0, 0, 0, 0);
 
+    /*
     for (size_t i = 0; i < g_ptex_texture->numFaces(); i++)
     {
         Ptex::FaceInfo info = g_ptex_texture->getFaceInfo(i);
@@ -827,8 +645,7 @@ int main(int argv, char** argc)
         }
         std::cout << std::endl;
     }
-
-    ptex_mesh_t* teapot_mesh = load_ptex_obj("assets/models/teapot/teapot.obj");
+    */
 
     printf("Hello, world!\n");
 
@@ -975,59 +792,58 @@ int main(int argv, char** argc)
     mesh_t* mesh = load_obj("assets/models/susanne.obj");
 
     GLuint vao;
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
+    {
+        attribute_desc* attribs = new attribute_desc[3];
+        attribs[0] = {
+            3, GL_FLOAT, GL_FALSE, offsetof(vertex_t, position), false,
+        };
+        attribs[1] = {
+            2, GL_FLOAT, GL_TRUE, offsetof(vertex_t, texcoord), false,
+        };
+        attribs[2] = {
+            3, GL_FLOAT, GL_FALSE, offsetof(vertex_t, normal), false,
+        };
 
-    GLuint buffer;
-    glGenBuffers(1, &buffer);
-    glBindBuffer(GL_ARRAY_BUFFER, buffer);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertex_t) * mesh->num_faces * 3, mesh->vertices, GL_STATIC_DRAW);
+        vao_desc vao_desc;
+        vao_desc.num_attribs = 3;
+        vao_desc.attribs = attribs;
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vertex_t), (void*)offsetof(vertex_t, position));
-    glEnableVertexAttribArray(0);
+        vao = create_vao(&vao_desc, mesh->vertices, sizeof(vertex_t), mesh->num_faces * 3);
 
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_TRUE, sizeof(vertex_t), (void*)offsetof(vertex_t, texcoord));
-    glEnableVertexAttribArray(1);
+        delete[] attribs;
+    }
 
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(vertex_t), (void*)offsetof(vertex_t, normal));
-    glEnableVertexAttribArray(2);
+    GLuint ptex_vao;
+    {
+        ptex_mesh_t* teapot_mesh = load_ptex_mesh("assets/models/teapot/teapot.obj");
 
-    const char* vertexShaderSource = read_file("assets/shaders/default.vert");
-    const char* fragmentShaderSource = read_file("assets/shaders/default.frag");
-    const char* outputFragShaderSource = read_file("assets/shaders/output.frag");
+        attribute_desc* attribs = new attribute_desc[4];
+        attribs[0] = {
+            3, GL_FLOAT, GL_FALSE, offsetof(ptex_vertex_t, position), false,
+        };
+        attribs[1] = {
+            3, GL_FLOAT, GL_FALSE, offsetof(ptex_vertex_t, normal), false,
+        };
+        attribs[2] = {
+            2, GL_FLOAT, GL_TRUE, offsetof(ptex_vertex_t, uv), false,
+        };
+        attribs[3] = {
+            1, GL_INT, GL_FALSE, offsetof(ptex_vertex_t, face_id), true,
+        };
 
-    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
-    glCompileShader(vertexShader);
-    check_shader_error(vertexShader);
+        vao_desc vao_desc;
+        vao_desc.num_attribs = 4;
+        vao_desc.attribs = attribs;
 
+        ptex_vao = create_vao(&vao_desc, teapot_mesh->vertices, sizeof(ptex_vertex_t), teapot_mesh->num_vertices);
 
-    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
-    glCompileShader(fragmentShader);
-    check_shader_error(fragmentShader);
+        delete[] attribs;
+    }
 
-    GLuint outputFragShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(outputFragShader, 1, &outputFragShaderSource, NULL);
-    glCompileShader(outputFragShader);
-    check_shader_error(outputFragShader);
+    GLuint program = compile_shader("assets/shaders/default.vert", "assets/shaders/default.frag");
+    GLuint outputProgram = compile_shader("assets/shaders/default.vert", "assets/shaders/output.frag");
 
-    GLuint program = glCreateProgram();
-
-    glAttachShader(program, vertexShader);
-    glAttachShader(program, fragmentShader);
-    glLinkProgram(program);
-    check_link_error(program);
-
-    GLuint outputProgram = glCreateProgram();
-    glAttachShader(outputProgram, vertexShader);
-    glAttachShader(outputProgram, outputFragShader);
-    glLinkProgram(outputProgram);
-    check_link_error(outputProgram);
-
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-    glDeleteShader(outputFragShader);
+    GLuint ptex_program = compile_shader("assets/shaders/ptex.vert", "assets/shaders/ptex.frag");
 
     mat4_t view = 
     { {
@@ -1070,6 +886,8 @@ int main(int argv, char** argc)
     glEnable(GL_DEPTH_TEST);
 
     vec3_t bg_color = { 1.0f, 0.5f, 0.8f };
+
+    glBindVertexArray(vao);
 
     while (glfwWindowShouldClose(window) == false)
     {

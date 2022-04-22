@@ -9,12 +9,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(HEADERS  
 	src/mesh.hh
 	src/maths.hh
+    src/mesh_loading.hh
+    src/gl_utils.hh
+    src/util.hh
 )
 
 set(SOURCES 
 	src/main.cxx
 	src/mesh.cxx
 	src/maths.cxx
+    src/mesh_loading.cxx
+    src/gl_utils.cxx
+    src/util.cxx
 )
 
 set(TARGET GpuRenderer)
@@ -56,16 +62,14 @@ target_link_libraries(${TARGET} Ptex)
 set(ASSETS_SRC "${CMAKE_SOURCE_DIR}/assets")
 set(ASSETS_DST "$<TARGET_FILE_DIR:${TARGET}>/assets")
 
-set(ASSETS_CMD copy_directory)
-set(ASSETS_MSG "Copy assets")
+add_custom_command(
+    TARGET ${TARGET} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${ASSETS_SRC}" "${ASSETS_DST}"
+    COMMENT "Copying assets from ${ASSETS_SRC} to ${ASSETS_DST}"
+)
 
 add_custom_command(
     TARGET ${TARGET} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E echo
-    "${ASSETS_MSG}: ${ASSETS_SRC} to ${ASSETS_DST}"
-)
-add_custom_command(
-    TARGET ${TARGET} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E ${ASSETS_CMD}
-    "${ASSETS_SRC}" "${ASSETS_DST}"
+    COMMAND ${CMAKE_COMMAND} -E echo "Copying assets from ${ASSETS_SRC} to ${ASSETS_DST}"
 )
