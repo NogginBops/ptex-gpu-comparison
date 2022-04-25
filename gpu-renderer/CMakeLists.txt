@@ -12,6 +12,7 @@ set(HEADERS
     src/mesh_loading.hh
     src/gl_utils.hh
     src/util.hh
+    src/platform.hh
 )
 
 set(SOURCES 
@@ -21,6 +22,7 @@ set(SOURCES
     src/mesh_loading.cxx
     src/gl_utils.cxx
     src/util.cxx
+    src/platform.cxx
 )
 
 set(TARGET GpuRenderer)
@@ -62,14 +64,37 @@ target_link_libraries(${TARGET} Ptex)
 set(ASSETS_SRC "${CMAKE_SOURCE_DIR}/assets")
 set(ASSETS_DST "$<TARGET_FILE_DIR:${TARGET}>/assets")
 
-add_custom_command(
-    TARGET ${TARGET} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    "${ASSETS_SRC}" "${ASSETS_DST}"
-    COMMENT "Copying assets from ${ASSETS_SRC} to ${ASSETS_DST}"
-)
+#${CMAKE_CURRENT_BINARY_DIR}
 
-add_custom_command(
-    TARGET ${TARGET} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E echo "Copying assets from ${ASSETS_SRC} to ${ASSETS_DST}"
-)
+#add_custom_command(
+#    #TARGET ${TARGET} POST_BUILD
+#    OUTPUT ${MISSING_FILE}
+#    COMMAND ${CMAKE_COMMAND} -E copy_directory
+#    "${ASSETS_SRC}" "${ASSETS_DST}"
+#    COMMENT "Copying assets from ${ASSETS_SRC} to ${ASSETS_DST}"
+#)
+#
+#add_custom_command(
+#    TARGET ${TARGET} POST_BUILD
+#    #OUTPUT ${MISSING_FILE}
+#    COMMAND ${CMAKE_COMMAND} -E echo "Copying assets from ${ASSETS_SRC} to ${ASSETS_DST}"
+#)
+
+#file(GLOB_RECURSE asset_files LIST_DIRECTORIES FALSE CONFIGURE_DEPENDS RELATIVE ${CMAKE_SOURCE_DIR} "assets/*")
+#
+#message(STATUS ${asset_files})
+#
+#add_custom_target(
+#    copy_assets ALL POST_BUILD
+#    COMMAND ${CMAKE_COMMAND} -E copy_directory "${ASSETS_SRC}" "${ASSETS_DST}"
+#    COMMENT "Copy assets!"
+#)
+#
+#add_custom_target(
+#    copy_assets_echo ALL POST_BUILD
+#    COMMAND ${CMAKE_COMMAND} -E echo "Copy assets from ${ASSETS_SRC} to ${ASSETS_DST}"
+#    COMMENT "Copy assets!"
+#)
+#add_dependencies(${TARGET} copy_assets)
+
+#file(COPY ${ASSETS_SRC} DESTINATION .)

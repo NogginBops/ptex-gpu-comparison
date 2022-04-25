@@ -78,9 +78,12 @@ void vec4_print(const char *name, vec4_t v);
 
 /* quat related functions */
 quat_t quat_new(float x, float y, float z, float w);
+quat_t quat_identity();
 float quat_dot(quat_t a, quat_t b);
 float quat_length(quat_t q);
 quat_t quat_normalize(quat_t q);
+quat_t quat_from_axis_angle(vec3_t axis, float angle);
+quat_t quat_mul_quat(quat_t a, quat_t b);
 quat_t quat_slerp(quat_t a, quat_t b, float t);
 void quat_print(const char *name, quat_t q);
 

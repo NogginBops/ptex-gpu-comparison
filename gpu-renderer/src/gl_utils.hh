@@ -4,6 +4,8 @@
 #include <glad/glad.h>
 #include <stdint.h>
 
+#include "maths.hh"
+
 typedef struct {
     GLint internal_format;
     GLenum format;
@@ -55,6 +57,9 @@ typedef struct {
 } vao_desc;
 
 GLuint create_vao(const vao_desc* desc, void* vertex_data, int vertex_size, int vertex_count);
+
+
+void uniform_mat4(GLuint program, const char* name, mat4_t* mat);
 
 
 #endif // GL_UTILS_H

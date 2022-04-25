@@ -12,6 +12,7 @@ typedef struct {
 typedef struct {
 	int num_vertices;
 	ptex_vertex_t* vertices;
+	vec3_t center;
 } ptex_mesh_t;
 
 ptex_mesh_t* load_ptex_mesh(const char* filename);

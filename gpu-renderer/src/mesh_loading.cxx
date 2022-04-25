@@ -59,39 +59,58 @@ ptex_mesh_t* load_ptex_mesh(const char* filename) {
 
 	std::vector<ptex_vertex_t> vertices;
 
+	vec3_t bbox_min = vec3_new(FLT_MAX, FLT_MAX, FLT_MAX);
+	vec3_t bbox_max = vec3_new(FLT_MIN, FLT_MIN, FLT_MIN);
+
 	size_t vertex_id = 0;
 	for (size_t face_id = 0; face_id < attrib.num_face_num_verts; face_id++)
 	{
 		int num_verts = attrib.face_num_verts[face_id];
-		printf("verts for face %zu: %d\n", face_id, num_verts);
+		//printf("verts for face %zu: %d\n", face_id, num_verts);
 
 		assert(num_verts == 4 && "We only handle quad meshes for now.");
+		
+		const int index[6] = { 0, 1, 2, 2, 3, 0 };
 
 		for (size_t i = 0; i < num_verts; i++)
 		{
 			auto face = attrib.faces[vertex_id + i];
+
+			vec3_t pos = positions[face.v_idx];
+
+			bbox_max = vec3_max(bbox_max, pos);
+			bbox_min = vec3_min(bbox_min, pos);
+		}
+
+		for (size_t i = 0; i < 6; i++)
+		{
+			auto face = attrib.faces[vertex_id + index[i]];
 
 			ptex_vertex_t vertex;
 
 			vertex.position = positions[face.v_idx];
 			vertex.normal = normals[face.vn_idx];
 			vertex.face_id = face_id;
-			switch (i)
+			switch (index[i])
 			{
-			case 0: vertex.uv = { 0, 0 }; break;
-			case 1: vertex.uv = { 0, 1 }; break;
-			case 2: vertex.uv = { 1, 0 }; break;
-			case 3: vertex.uv = { 1, 1 }; break;
+			case 0: vertex.uv = { 1, 1 }; break;
+			case 1: vertex.uv = { 1, 0 }; break;
+			case 2: vertex.uv = { 0, 0 }; break;
+			case 3: vertex.uv = { 0, 1 }; break;
 			}
 
 			vertices.push_back(vertex);
 		}
+
+		vertex_id += num_verts;
 	}
 
 	ptex_mesh_t* mesh = (ptex_mesh_t*)malloc(sizeof(ptex_mesh_t));
 	mesh->num_vertices = vertices.size();
 	mesh->vertices = (ptex_vertex_t*)malloc(sizeof(ptex_vertex_t) * mesh->num_vertices);
 	memcpy(mesh->vertices, vertices.data(), sizeof(ptex_vertex_t) * mesh->num_vertices);
+
+	mesh->center = vec3_div(vec3_add(bbox_min, bbox_max), 2);
 
 	tinyobj_attrib_free(&attrib);
 	tinyobj_materials_free(materials, num_materials);

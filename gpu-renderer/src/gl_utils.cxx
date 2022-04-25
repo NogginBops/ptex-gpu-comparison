@@ -209,3 +209,11 @@ GLuint create_vao(const vao_desc* desc, void* vertex_data, int vertex_size, int 
 
     return vao;
 }
+
+
+void uniform_mat4(GLuint program, const char* name, mat4_t* mat)
+{
+    glUseProgram(program);
+    GLint location = glGetUniformLocation(program, name);
+    glUniformMatrix4fv(location, 1, GL_FALSE, (GLfloat*)mat);
+}

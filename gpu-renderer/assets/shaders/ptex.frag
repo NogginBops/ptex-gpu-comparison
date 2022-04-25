@@ -16,5 +16,9 @@ vec3 hsv2rgb(vec3 c)
 
 void main()
 {
-	FragColor = vec4(hsv2rgb(vec3(faceID / 256.0, UV)), 1);
+	FragColor = vec4(hsv2rgb(vec3(((faceID * 143) % 256) / 256.0, UV)), 1);
+    FragColor = vec4(UV, 0, 1);
+
+    vec3 color = texture(tex, UV).rgb;
+    FragColor = vec4(color, 1);
 }

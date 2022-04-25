@@ -271,6 +271,11 @@ quat_t quat_new(float x, float y, float z, float w) {
     return q;
 }
 
+quat_t quat_identity()
+{
+    return { 0, 0, 0, 1 };
+}
+
 float quat_dot(quat_t a, quat_t b) {
     return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
 }
@@ -282,6 +287,40 @@ float quat_length(quat_t q) {
 quat_t quat_normalize(quat_t q) {
     float factor = 1 / quat_length(q);
     return quat_new(q.x * factor, q.y * factor, q.z * factor, q.w * factor);
+}
+
+quat_t quat_from_axis_angle(vec3_t axis, float angle)
+{
+    if (vec3_length(axis) == 0)
+    {
+        return quat_identity();
+    }
+
+    quat_t result;
+
+    angle *= 0.5f;
+    axis = vec3_normalize(axis);
+
+    result.x = axis.x * sinf(angle);
+    result.y = axis.y * sinf(angle);
+    result.z = axis.z * sinf(angle);
+    result.w = cosf(angle);
+
+    return quat_normalize(result);
+}
+
+quat_t quat_mul_quat(quat_t a, quat_t b)
+{
+    vec3_t cross = vec3_cross({ a.x, a.y, a.z }, { b.x, b.y, b.z });
+    float dot = vec3_dot({ a.x, a.y, a.z }, { b.x, b.y, b.z });
+
+    quat_t result;
+    result.x = (b.w * a.x) + (a.w * b.x) + cross.x;
+    result.y = (b.w * a.y) + (a.w * b.y) + cross.y;
+    result.z = (b.w * a.z) + (a.w * b.z) + cross.z;
+    result.w = (a.w * b.w) - dot;
+
+    return result;
 }
 
 /*

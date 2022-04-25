@@ -22,6 +22,8 @@
 #include "util.hh"
 #include "gl_utils.hh"
 
+#include "platform.hh"
+
 typedef struct {
     GLenum wrap_s, wrap_t;
     GLenum mag_filter, min_filter;
@@ -50,6 +52,35 @@ texture_t g_tex_test;
 Ptex::PtexTexture* g_ptex_texture;
 Ptex::PtexFilter* g_ptex_filter;
 
+ptex_mesh_t* g_teapot_mesh;
+
+bool stream_cpu_result = false;
+texture_t g_cpu_stream_tex;
+
+typedef struct {
+    vec3_t center;
+    float distance;
+    float x_axis_rot, y_axis_rot;
+
+    quat_t quaternion;
+} camera_t;
+
+camera_t g_camera;
+
+mat4_t calc_view_matrix(camera_t camera) 
+{
+    mat4_t center_offset = mat4_translate(camera.center.x, camera.center.y, camera.center.z);
+    mat4_t offset = mat4_translate(0, 0, camera.distance);
+    // FIXME!
+    mat4_t transform = mat4_identity();
+    transform = mat4_mul_mat4(transform, center_offset);
+    transform = mat4_mul_mat4(transform, mat4_from_quat(camera.quaternion));
+    transform = mat4_mul_mat4(transform, offset);
+    //transform = mat4_mul_mat4(transform, mat4_from_quat(camera.quaternion));
+    //transform = mat4_mul_mat4(center_offset, transform);
+    return mat4_inverse(transform);
+}
+
 void GLFWErrorCallback(int error_code, const char* description)
 {
     printf("%d: %s\n", error_code, description);
@@ -57,7 +88,12 @@ void GLFWErrorCallback(int error_code, const char* description)
 
 void GLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam)
 {
-    printf("%s\n", message);
+    // Ignore 'Pixel-path performance warning: Pixel transfer is synchronized with 3D rendering.'
+    // as we are going to get a lot of those.
+    if (id == 131154)
+        return;
+
+    printf("%u: %s\n", id, message);
 }
 
 void GLFWFrambufferSizeCallback(GLFWwindow* window, int width, int height)
@@ -80,6 +116,58 @@ void GLFWKeyCallback(GLFWwindow* window, int key, int scancode, int action, int 
     {
         glfwSetWindowShouldClose(window, true);
     }
+
+    if (key == GLFW_KEY_C && action == GLFW_PRESS)
+    {
+        stream_cpu_result = !stream_cpu_result;
+    }
+}
+
+bool control_camera = false;
+void GLFWMouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+    {
+        control_camera = true;
+    }
+    else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE)
+    {
+        control_camera = false;
+    }
+}
+
+void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
+{
+    static double prev_xpos = 0, prev_ypos = 0;
+
+    double xdiff = xpos - prev_xpos;
+    double ydiff = ypos - prev_ypos;
+
+    const float MOUSE_SPEED_X = -0.01f;
+    const float MOUSE_SPEED_Y = -0.01f;
+
+    const float CAMERA_MIN_Y = -75.0f;
+    const float CAMERA_MAX_Y = +75.0f;
+
+    if (control_camera)
+    {
+        g_camera.x_axis_rot += xdiff * MOUSE_SPEED_X;
+        g_camera.y_axis_rot += ydiff * MOUSE_SPEED_Y;
+
+        g_camera.y_axis_rot = float_clamp(g_camera.y_axis_rot, TO_RADIANS(CAMERA_MIN_Y), TO_RADIANS(CAMERA_MAX_Y));
+    }
+
+    const vec3_t x_axis = { 1, 0, 0 };
+    const vec3_t y_axis = { 0, 1, 0 };
+    const vec3_t z_axis = { 0, 0, 1 };
+
+    quat_t yrot = quat_from_axis_angle(y_axis, g_camera.x_axis_rot);
+    quat_t xrot = quat_from_axis_angle(x_axis, g_camera.y_axis_rot);
+
+    g_camera.quaternion = quat_mul_quat(yrot, xrot);
+
+    prev_xpos = xpos;
+    prev_ypos = ypos;
 }
 
 #define R8UI 1
@@ -431,6 +519,7 @@ vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3
             //const rgb8_t colors[] = { {255, 0, 0}, {0, 255, 0}, {0, 0, 255} };
 
             cpu_data[i] = ptex;
+            //cpu_data[i] = { uv.x, uv.y, 0 };
         }
     }
 
@@ -560,6 +649,7 @@ void compare_buffers_rgb8(uint8_t* reference, uint8_t* result, int width, int he
 texture_t create_texture(const char* filepath, texture_desc desc) {
     int channels;
     texture_t tex;
+    stbi_set_flip_vertically_on_load(true);
     stbi_uc* img = stbi_load(filepath, &tex.width, &tex.height, &channels, 4);
 
     glGenTextures(1, &tex.texture);
@@ -593,10 +683,61 @@ texture_t create_texture(const char* filepath, texture_desc desc) {
     return tex;
 }
 
+texture_t create_empty_texture(texture_desc desc, GLenum internal_format) 
+{
+    int channels;
+    texture_t tex;
+    
+    glGenTextures(1, &tex.texture);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tex.texture);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, tex.width, tex.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+    tex.data = NULL;
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, desc.wrap_s);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, desc.wrap_t);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, desc.min_filter);
+
+    tex.wrap_s = desc.wrap_s;
+    tex.wrap_t = desc.wrap_t;
+
+    tex.mag_filter = desc.mag_filter;
+    tex.min_filter = desc.min_filter;
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    return tex;
+}
+
+void update_texture(texture_t* tex, GLenum internal_format, GLenum pixel_format, GLenum pixel_type, int width, int height, void* data)
+{
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tex->texture);
+    
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, pixel_format, pixel_type, data);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, tex->wrap_s);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, tex->wrap_t);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, tex->mag_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, tex->min_filter);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 int main(int argv, char** argc)
 {
+    // FIXME: Either make this work for all platforms,
+    // or find a better solution for this.
+    change_directory("../../../assets");
+    
     Ptex::String error_str;
-    g_ptex_texture = PtexTexture::open("assets/models/teapot/teapot.ptx", error_str);
+    g_ptex_texture = PtexTexture::open("models/teapot/teapot.ptx", error_str);
 
     if (error_str.empty() == false)
     {
@@ -620,8 +761,13 @@ int main(int argv, char** argc)
 
     g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ PtexFilter::FilterType::f_point, false, 0, false });
 
-    float* sample = (float*)malloc(g_ptex_texture->numChannels() * sizeof(float));
-    g_ptex_filter->eval(sample, 0, g_ptex_texture->numChannels(), 0, 0, 0, 0, 0, 0, 0);
+    g_camera = {
+        { 0, 1, 0 }, // center
+        1.5f, // radius
+        0, 0,
+
+        { 0, 0, 0, 1 } // quat
+    };
 
     /*
     for (size_t i = 0; i < g_ptex_texture->numFaces(); i++)
@@ -672,6 +818,9 @@ int main(int argv, char** argc)
 
     glfwMakeContextCurrent(window);
 
+    // Enable VSync
+    glfwSwapInterval(1);
+
     if (gladLoadGLLoader((GLADloadproc)glfwGetProcAddress) == false)
     {
         printf("Failed to initialize GLAD\n");
@@ -682,6 +831,8 @@ int main(int argv, char** argc)
 
     glfwSetFramebufferSizeCallback(window, GLFWFrambufferSizeCallback);
     glfwSetKeyCallback(window, GLFWKeyCallback);
+    glfwSetCursorPosCallback(window, GLFWMouseCallback);
+    glfwSetMouseButtonCallback(window, GLFWMouseButtonCallback);
 
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
@@ -783,13 +934,20 @@ int main(int argv, char** argc)
     
     texture_desc tex_test_desc = {
         GL_REPEAT, GL_REPEAT,
-        GL_NEAREST, GL_NEAREST,
+        GL_LINEAR, GL_LINEAR,
         false,
     };
 
-    g_tex_test = create_texture("assets/textures/uv_test.png", tex_test_desc);
+    g_tex_test = create_texture("textures/uv_space.png", tex_test_desc);
 
-    mesh_t* mesh = load_obj("assets/models/susanne.obj");
+    texture_desc cpu_stream_tex_desc = {
+        GL_CLAMP, GL_CLAMP,
+        GL_LINEAR, GL_LINEAR,
+        true
+    };
+    g_cpu_stream_tex = create_empty_texture(cpu_stream_tex_desc, GL_RGB32F);
+
+    mesh_t* mesh = load_obj("models/susanne.obj");
 
     GLuint vao;
     {
@@ -815,7 +973,7 @@ int main(int argv, char** argc)
 
     GLuint ptex_vao;
     {
-        ptex_mesh_t* teapot_mesh = load_ptex_mesh("assets/models/teapot/teapot.obj");
+        g_teapot_mesh = load_ptex_mesh("models/teapot/teapot.obj");
 
         attribute_desc* attribs = new attribute_desc[4];
         attribs[0] = {
@@ -835,23 +993,29 @@ int main(int argv, char** argc)
         vao_desc.num_attribs = 4;
         vao_desc.attribs = attribs;
 
-        ptex_vao = create_vao(&vao_desc, teapot_mesh->vertices, sizeof(ptex_vertex_t), teapot_mesh->num_vertices);
+        ptex_vao = create_vao(&vao_desc, g_teapot_mesh->vertices, sizeof(ptex_vertex_t), g_teapot_mesh->num_vertices);
 
         delete[] attribs;
     }
 
-    GLuint program = compile_shader("assets/shaders/default.vert", "assets/shaders/default.frag");
-    GLuint outputProgram = compile_shader("assets/shaders/default.vert", "assets/shaders/output.frag");
+    g_camera.center = g_teapot_mesh->center;
 
-    GLuint ptex_program = compile_shader("assets/shaders/ptex.vert", "assets/shaders/ptex.frag");
+    //GLuint program = compile_shader("shaders/default.vert", "shaders/default.frag");
+    //GLuint outputProgram = compile_shader("shaders/default.vert", "shaders/output.frag");
+
+    GLuint ptex_program = compile_shader("shaders/ptex.vert", "shaders/ptex.frag");
+    GLuint ptex_output_program = compile_shader("shaders/ptex.vert", "shaders/ptex_output.frag");
+
+    GLuint cpu_stream_program = compile_shader("shaders/fullscreen.vert", "shaders/fullscreen.frag");
 
     mat4_t view = 
     { {
         {1, 0, -0, -0},
-        {0, 1, 4.37114e-08f, -0},
+        {0, 1, 4.37114e-08f, -0.3},
         {0, -4.37114e-08f, 1, -1.5f},
         {0, 0, 0, 1}
     } };
+    view = calc_view_matrix(g_camera);
 
     mat4_t proj =
     { {
@@ -867,31 +1031,45 @@ int main(int argv, char** argc)
     mat4_t vp = mat4_mul_mat4(view, proj);
 
     mat4_t model = mat4_scale(0.5f, 0.5f, 0.5f);
+    model = mat4_scale(1.0f, 1.f, 1.f);
 
     mat4_t mvp = mat4_mul_mat4(model, vp);
 
-    glUseProgram(program);
+    //glUseProgram(program);
     
-    int tex_location = glGetUniformLocation(program, "tex");
-    glUniform1i(tex_location, 0);
+    //int tex_location = glGetUniformLocation(program, "tex");
+    //glUniform1i(tex_location, 0);
 
-    int vp_location = glGetUniformLocation(program, "mvp");
-    glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*)&mvp);
+    //int vp_location = glGetUniformLocation(program, "mvp");
+    //glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*)&mvp);
 
-    glUseProgram(outputProgram);
-
-    vp_location = glGetUniformLocation(outputProgram, "mvp");
-    glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*)&mvp);
+    
+    uniform_mat4(ptex_program, "mvp", &mvp);
+    uniform_mat4(ptex_output_program, "mvp", &mvp);
 
     glEnable(GL_DEPTH_TEST);
 
     vec3_t bg_color = { 1.0f, 0.5f, 0.8f };
 
     glBindVertexArray(vao);
+    glBindVertexArray(ptex_vao);
 
     while (glfwWindowShouldClose(window) == false)
     {
         glfwPollEvents();
+
+
+        {
+            view = calc_view_matrix(g_camera);
+            view = mat4_transpose(view);
+
+            mat4_t vp = mat4_mul_mat4(view, proj);
+            mat4_t mvp = mat4_mul_mat4(model, vp);
+
+            uniform_mat4(ptex_program, "mvp", &mvp);
+            uniform_mat4(ptex_output_program, "mvp", &mvp);
+        }
+
 
         // FIXME: Take the screenshot after rendering this frame?
         if (takeScreenshot)
@@ -968,11 +1146,43 @@ int main(int argv, char** argc)
             takeScreenshot = false;
         }
 
+        if (stream_cpu_result)
+        {
+            int width, height;
+            glfwGetFramebufferSize(window, &width, &height);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, g_frambuffer.framebuffer);
+
+            glReadBuffer(GL_COLOR_ATTACHMENT0);
+            void* faceID_buffer = malloc(width * height * sizeof(uint16_t));
+            glReadPixels(0, 0, width, height, GL_RED_INTEGER, GL_UNSIGNED_SHORT, faceID_buffer);
+
+            glReadBuffer(GL_COLOR_ATTACHMENT1);
+            void* uv_buffer = malloc(width * height * sizeof(vec3_t));
+            glReadPixels(0, 0, width, height, GL_RGB, GL_FLOAT, uv_buffer);
+
+            glReadBuffer(GL_COLOR_ATTACHMENT2);
+            void* uv_deriv_buffer = malloc(width * height * sizeof(vec4_t));
+            glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT, uv_deriv_buffer);
+
+            vec3_t* cpu_buffer = calculate_image_cpu(width, height, (uint16_t*)faceID_buffer, (vec3_t*)uv_buffer, (vec4_t*)uv_deriv_buffer, bg_color);
+
+            rgb8_t* cpu_rgb8_buffer = vec3_buffer_to_rgb8(cpu_buffer, width, height);
+
+            update_texture(&g_cpu_stream_tex, GL_RGB32F, GL_RGB, GL_FLOAT, width, height, cpu_buffer);
+
+            free(cpu_rgb8_buffer);
+            free(faceID_buffer);
+            free(uv_buffer);
+            free(uv_deriv_buffer);
+            free(cpu_buffer);
+        }
+
         glBindFramebuffer(GL_FRAMEBUFFER, g_frambuffer.framebuffer);
 
-        GLenum drawBuffers[] = { 
-            GL_COLOR_ATTACHMENT0, 
-            GL_COLOR_ATTACHMENT1, 
+        GLenum drawBuffers[] = {
+            GL_COLOR_ATTACHMENT0,
+            GL_COLOR_ATTACHMENT1,
             GL_COLOR_ATTACHMENT2,
         };
         glDrawBuffers(3, drawBuffers);
@@ -984,15 +1194,13 @@ int main(int argv, char** argc)
         glClearBufferfv(GL_COLOR, 1, uvClearValue);
         glClearBufferfv(GL_DEPTH, 0, &depthClearValue);
 
-        glUseProgram(outputProgram);
+        glUseProgram(ptex_output_program);
 
-        glDrawArrays(GL_TRIANGLES, 0, mesh->num_faces * 3);
+        glDrawArrays(GL_TRIANGLES, 0, g_teapot_mesh->num_vertices);
         
         glBindFramebuffer(GL_FRAMEBUFFER, g_output_framebuffer.framebuffer);
 
-        glUseProgram(program);
-
-        glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*)&mvp);
+        glUseProgram(ptex_program);
 
         glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -1000,7 +1208,7 @@ int main(int argv, char** argc)
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, g_tex_test.texture);
 
-        glDrawArrays(GL_TRIANGLES, 0, mesh->num_faces * 3);
+        glDrawArrays(GL_TRIANGLES, 0, g_teapot_mesh->num_vertices);
 
         glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -1008,6 +1216,25 @@ int main(int argv, char** argc)
         glBindFramebuffer(GL_READ_FRAMEBUFFER, g_output_framebuffer.framebuffer);
 
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+        if (stream_cpu_result)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            glUseProgram(cpu_stream_program);
+            
+            int tex_location = glGetUniformLocation(cpu_stream_program, "tex");
+            glUniform1i(tex_location, 0);
+
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, g_cpu_stream_tex.texture);
+
+            glDisable(GL_DEPTH_TEST);
+            
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+
+            glEnable(GL_DEPTH_TEST);
+        }
 
         glfwSwapBuffers(window);
     }
