@@ -93,9 +93,9 @@ ptex_mesh_t* load_ptex_mesh(const char* filename) {
 			vertex.face_id = face_id;
 			switch (index[i])
 			{
-			case 0: vertex.uv = { 1, 1 }; break;
+			case 0: vertex.uv = { 0, 0 }; break;
 			case 1: vertex.uv = { 1, 0 }; break;
-			case 2: vertex.uv = { 0, 0 }; break;
+			case 2: vertex.uv = { 1, 1 }; break;
 			case 3: vertex.uv = { 0, 1 }; break;
 			}
 

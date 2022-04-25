@@ -178,7 +178,7 @@ void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
 
 void GLFWScrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 {
-    g_camera.distance_t += yoffset * ZOOM_SPEED;
+    g_camera.distance_t += -yoffset * ZOOM_SPEED;
     g_camera.distance_t = float_clamp(g_camera.distance_t, 0, 1);
 
     g_camera.distance = float_eerp(CAMERA_MIN_DIST, CAMERA_MAX_DIST, g_camera.distance_t);
@@ -523,7 +523,7 @@ vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3
             vec3_t uv = uv_buffer[i];
 
             vec4_t uv_deriv = uv_deriv_buffer[i];
-
+            
             vec3_t color = { uv.x, uv.y, uv.z };
 
             vec3_t tex = sample_texture(&g_tex_test, { uv.x, uv.y }, uv_deriv);
@@ -773,7 +773,7 @@ int main(int argv, char** argc)
     std::cout << "numChannels: " << info.numChannels << std::endl;
     std::cout << "numFaces: " << info.numFaces << std::endl;
 
-    g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ PtexFilter::FilterType::f_point, false, 0, false });
+    g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ PtexFilter::FilterType::f_bicubic, true, 0, false });
 
     g_camera = {
         { 0, 1, 0 }, // center
