@@ -59,13 +59,25 @@ texture_t g_cpu_stream_tex;
 
 typedef struct {
     vec3_t center;
-    float distance;
+    float distance, distance_t;
     float x_axis_rot, y_axis_rot;
 
     quat_t quaternion;
 } camera_t;
 
 camera_t g_camera;
+
+const float MOUSE_SPEED_X = -0.01f;
+const float MOUSE_SPEED_Y = -0.01f;
+
+const float ZOOM_SPEED = 0.01f;
+
+const float CAMERA_MIN_Y = -85.0f;
+const float CAMERA_MAX_Y = +85.0f;
+
+const float CAMERA_MIN_DIST = 0.2f;
+const float CAMERA_MAX_DIST = 100.0f;
+
 
 mat4_t calc_view_matrix(camera_t camera) 
 {
@@ -143,12 +155,6 @@ void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
     double xdiff = xpos - prev_xpos;
     double ydiff = ypos - prev_ypos;
 
-    const float MOUSE_SPEED_X = -0.01f;
-    const float MOUSE_SPEED_Y = -0.01f;
-
-    const float CAMERA_MIN_Y = -75.0f;
-    const float CAMERA_MAX_Y = +75.0f;
-
     if (control_camera)
     {
         g_camera.x_axis_rot += xdiff * MOUSE_SPEED_X;
@@ -168,6 +174,14 @@ void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
 
     prev_xpos = xpos;
     prev_ypos = ypos;
+}
+
+void GLFWScrollCallback(GLFWwindow* window, double xoffset, double yoffset)
+{
+    g_camera.distance_t += yoffset * ZOOM_SPEED;
+    g_camera.distance_t = float_clamp(g_camera.distance_t, 0, 1);
+
+    g_camera.distance = float_eerp(CAMERA_MIN_DIST, CAMERA_MAX_DIST, g_camera.distance_t);
 }
 
 #define R8UI 1
@@ -763,7 +777,7 @@ int main(int argv, char** argc)
 
     g_camera = {
         { 0, 1, 0 }, // center
-        1.5f, // radius
+        float_eerp(CAMERA_MIN_DIST, CAMERA_MAX_DIST, 0.3f), 0.3f, // radius
         0, 0,
 
         { 0, 0, 0, 1 } // quat
@@ -809,7 +823,7 @@ int main(int argv, char** argc)
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
     glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(600, 600, "Test title", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(800, 800, "Test title", NULL, NULL);
     if (window == NULL)
     {
         printf("Failed to create GLFW window\n");
@@ -833,6 +847,7 @@ int main(int argv, char** argc)
     glfwSetKeyCallback(window, GLFWKeyCallback);
     glfwSetCursorPosCallback(window, GLFWMouseCallback);
     glfwSetMouseButtonCallback(window, GLFWMouseButtonCallback);
+    glfwSetScrollCallback(window, GLFWScrollCallback);
 
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);

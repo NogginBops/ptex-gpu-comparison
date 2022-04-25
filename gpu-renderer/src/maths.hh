@@ -24,6 +24,7 @@ typedef struct {float m[4][4];} mat4_t;
 float float_min(float a, float b);
 float float_max(float a, float b);
 float float_lerp(float a, float b, float t);
+float float_eerp(float a, float b, float t);
 float float_clamp(float f, float min, float max);
 float float_saturate(float f);
 float float_from_uchar(unsigned char value);

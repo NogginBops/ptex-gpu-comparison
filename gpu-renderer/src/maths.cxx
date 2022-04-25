@@ -18,6 +18,10 @@ float float_lerp(float a, float b, float t) {
     //return (1.0f - t) * a + t * b;
 }
 
+float float_eerp(float a, float b, float t) {
+    return powf(a, 1 - t) * pow(b, t);
+}
+
 float float_clamp(float f, float min, float max) {
     return f < min ? min : (f > max ? max : f);
 }
