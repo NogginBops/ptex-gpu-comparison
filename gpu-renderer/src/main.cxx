@@ -777,7 +777,7 @@ int main(int argv, char** argc)
 
     g_camera = {
         { 0, 1, 0 }, // center
-        float_eerp(CAMERA_MIN_DIST, CAMERA_MAX_DIST, 0.3f), 0.3f, // radius
+        float_eerp(CAMERA_MIN_DIST, CAMERA_MAX_DIST, 0.3f), 0.3f, // distance, distance_t
         0, 0,
 
         { 0, 0, 0, 1 } // quat
