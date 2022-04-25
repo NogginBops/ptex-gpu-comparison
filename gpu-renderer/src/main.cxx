@@ -491,7 +491,13 @@ vec3_t sample_ptex_texture(Ptex::PtexTexture* tex, Ptex::PtexFilter* filter, int
     else if (tex->numChannels() == 3)
     {
         vec3_t color;
-        filter->eval((float*) &color, 0, 1, faceID, uv.x, uv.y, uv_derivatives.x, uv_derivatives.y, uv_derivatives.z, uv_derivatives.w);
+        filter->eval((float*) &color, 0, 3, faceID, uv.x, uv.y, uv_derivatives.x, uv_derivatives.y, uv_derivatives.z, uv_derivatives.w);
+        return color;
+    }
+    else if (tex->numChannels() == 4)
+    {
+        vec3_t color;
+        filter->eval((float*)&color, 0, 3, faceID, uv.x, uv.y, uv_derivatives.x, uv_derivatives.y, uv_derivatives.z, uv_derivatives.w);
         return color;
     }
     else assert(false);
@@ -751,7 +757,8 @@ int main(int argv, char** argc)
     change_directory("../../../assets");
     
     Ptex::String error_str;
-    g_ptex_texture = PtexTexture::open("models/teapot/teapot.ptx", error_str);
+    //g_ptex_texture = PtexTexture::open("models/teapot/teapot.ptx", error_str);
+    g_ptex_texture = PtexTexture::open("models/sphere/sphere.ptx", error_str);
 
     if (error_str.empty() == false)
     {
@@ -988,7 +995,8 @@ int main(int argv, char** argc)
 
     GLuint ptex_vao;
     {
-        g_teapot_mesh = load_ptex_mesh("models/teapot/teapot.obj");
+        //g_teapot_mesh = load_ptex_mesh("models/teapot/teapot.obj");
+        g_teapot_mesh = load_ptex_mesh("models/sphere/sphere.obj");
 
         attribute_desc* attribs = new attribute_desc[4];
         attribs[0] = {
