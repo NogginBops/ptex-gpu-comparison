@@ -83,21 +83,23 @@ ptex_mesh_t* load_ptex_mesh(const char* filename) {
 		// FIXME: More proper handling!
 		if (num_verts == 3)
 		{
-			for (size_t i = 0; i < 6; i++)
+			for (size_t i = 0; i < 3; i++)
 			{
 				auto face = attrib.faces[vertex_id + i];
 
 				ptex_vertex_t vertex;
 
 				vertex.position = positions[face.v_idx];
-				vertex.normal = normals[face.vn_idx];
+				if (face.vn_idx != 0x80000000)
+					vertex.normal = normals[face.vn_idx];
+				else vertex.normal = { 0, 0, 0 };
 				vertex.face_id = face_id;
 				switch (i)
 				{
 				case 0: vertex.uv = { 0, 0 }; break;
 				case 1: vertex.uv = { 1, 0 }; break;
-				case 2: vertex.uv = { 1, 1 }; break;
-				case 3: vertex.uv = { 0, 1 }; break;
+				case 2: vertex.uv = { 0, 1 }; break;
+				case 3: vertex.uv = { 0, 1 }; assert(false); break;
 				}
 
 				vertices.push_back(vertex);
@@ -117,7 +119,9 @@ ptex_mesh_t* load_ptex_mesh(const char* filename) {
 			ptex_vertex_t vertex;
 
 			vertex.position = positions[face.v_idx];
-			vertex.normal = normals[face.vn_idx];
+			if (face.vn_idx != 0x80000000)
+				vertex.normal = normals[face.vn_idx];
+			else vertex.normal = { 0, 0, 0 };
 			vertex.face_id = face_id;
 			switch (index[i])
 			{

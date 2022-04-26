@@ -525,14 +525,13 @@ vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3
                 continue;
             }
 
-
             vec3_t uv = uv_buffer[i];
 
             vec4_t uv_deriv = uv_deriv_buffer[i];
             
             vec3_t color = { uv.x, uv.y, uv.z };
 
-            vec3_t tex = sample_texture(&g_tex_test, { uv.x, uv.y }, uv_deriv);
+            //vec3_t tex = sample_texture(&g_tex_test, { uv.x, uv.y }, uv_deriv);
 
             vec3_t ptex = sample_ptex_texture(g_ptex_texture, g_ptex_filter, id, { uv.x, uv.y }, uv_deriv);
 
@@ -703,7 +702,7 @@ texture_t create_texture(const char* filepath, texture_desc desc) {
     return tex;
 }
 
-texture_t create_empty_texture(texture_desc desc, GLenum internal_format) 
+texture_t create_empty_texture(texture_desc desc, int width, int height, GLenum internal_format) 
 {
     int channels;
     texture_t tex;
@@ -713,7 +712,7 @@ texture_t create_empty_texture(texture_desc desc, GLenum internal_format)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex.texture);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, tex.width, tex.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 
     tex.data = NULL;
 
@@ -758,7 +757,7 @@ int main(int argv, char** argc)
     
     Ptex::String error_str;
     //g_ptex_texture = PtexTexture::open("models/teapot/teapot.ptx", error_str);
-    g_ptex_texture = PtexTexture::open("models/sphere/sphere.ptx", error_str);
+    g_ptex_texture = PtexTexture::open("models/sphere/sphere_sorted_line.ptx", error_str);
 
     if (error_str.empty() == false)
     {
@@ -780,7 +779,19 @@ int main(int argv, char** argc)
     std::cout << "numChannels: " << info.numChannels << std::endl;
     std::cout << "numFaces: " << info.numFaces << std::endl;
 
-    g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ PtexFilter::FilterType::f_bicubic, true, 0, false });
+    char* metadataTypeString[] = { "mdt_string", "mdt_int8", "mdt_int16", "mdt_int32", "mdt_float", "mdt_double" };
+
+    auto meta = g_ptex_texture->getMetaData();
+    std::cout << "Metadata keys: " << meta->numKeys() << std::endl;
+    for (size_t i = 0; i < meta->numKeys(); i++)
+    {
+        Ptex::MetaDataType metaData;
+        const char* name;
+        meta->getKey(i, name, metaData);
+        printf("%zu %s: %s\n", i, name, metadataTypeString[metaData]);    
+    }
+
+    g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ PtexFilter::FilterType::f_point, false, 0, false });
 
     g_camera = {
         { 0, 1, 0 }, // center
@@ -789,30 +800,6 @@ int main(int argv, char** argc)
 
         { 0, 0, 0, 1 } // quat
     };
-
-    /*
-    for (size_t i = 0; i < g_ptex_texture->numFaces(); i++)
-    {
-        Ptex::FaceInfo info = g_ptex_texture->getFaceInfo(i);
-
-        std::cout << "faceID: " << i << std::endl;
-        std::cout << "u: " << info.res.u() << ", v: " << info.res.v() << std::endl;
-        for (size_t i = 0; i < 4; i++)
-        {
-            auto id = info.adjedge(i);
-            const char* name;
-            switch (id) {
-            case Ptex::EdgeId::e_bottom: name = "bottom"; break;
-            case Ptex::EdgeId::e_left: name = "left"; break;
-            case Ptex::EdgeId::e_right: name = "right"; break;
-            case Ptex::EdgeId::e_top: name = "top"; break;
-            default: name = "unknown"; break;
-            }
-            std::cout << name << " ";
-        }
-        std::cout << std::endl;
-    }
-    */
 
     printf("Hello, world!\n");
 
@@ -967,7 +954,7 @@ int main(int argv, char** argc)
         GL_LINEAR, GL_LINEAR,
         true
     };
-    g_cpu_stream_tex = create_empty_texture(cpu_stream_tex_desc, GL_RGB32F);
+    g_cpu_stream_tex = create_empty_texture(cpu_stream_tex_desc, width, height, GL_RGB32F);
 
     mesh_t* mesh = load_obj("models/susanne.obj");
 
@@ -1215,6 +1202,7 @@ int main(int argv, char** argc)
         float depthClearValue = 1.0f;
         glClearBufferuiv(GL_COLOR, 0, faceClearValue);
         glClearBufferfv(GL_COLOR, 1, uvClearValue);
+        glClearBufferfv(GL_COLOR, 2, uvClearValue);
         glClearBufferfv(GL_DEPTH, 0, &depthClearValue);
 
         glUseProgram(ptex_output_program);
