@@ -1,13 +1,9 @@
-import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-import os
 import argparse
-import skimage
-from skimage import data
 from skimage import io
 from skimage import metrics
-from functools import partial
+from os import listdir
+from os.path import isfile, join
 
 
 def psnr(ref, res):
@@ -27,11 +23,15 @@ def nrmse(ref, res):
 
 
 def read_image(img_name):
-    return io.imread(img_name + '.png')
+    return io.imread(img_name)
 
 
 def read_images(img_names):
     return [read_image(img_name) for img_name in img_names]
+
+
+def dir_files(path):
+    return [file for file in listdir(path) if isfile(join(path, file))]
 
 
 def load_images(ref_renders_names, gpus_renders_names):
@@ -67,18 +67,23 @@ def gen_gpu_names(num_gpus):
     return ["GPU_" + str(gpu_id) for gpu_id in range(0, num_gpus)]
 
 
-def combine_res_dataframes(dataframes, comp_metrics, num_gpus):
+def get_dataframe_parameters(comp_metrics, num_gpus):
     metric_names = [name for _, _, name in comp_metrics]
     implementation_names = gen_gpu_names(num_gpus)
     levels_names = ['Implementation', 'Scene']
 
-    dataframe = pd.concat(dataframes, keys=implementation_names, names=levels_names)
-    dataframe.columns = metric_names
-
-    return dataframe
+    return metric_names, implementation_names, levels_names
 
 
-# Shape: (implementations, renders, metrics)
+def combine_res_dataframes(dataframes, comp_metrics, num_gpus):
+    metric_names, implementation_names, levels_names = get_dataframe_parameters(comp_metrics, num_gpus)
+
+    combined_dataframe = pd.concat(dataframes, keys=implementation_names, names=levels_names)
+    combined_dataframe.columns = metric_names
+
+    return combined_dataframe
+
+
 def gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names):
     dataframes = ref_gpu_dataframes(ref_images, gpus_images, comp_metrics, scenes_names)
 
@@ -93,8 +98,111 @@ def gpus_renders_ssim(dataframe):
     return dataframe["SSIM"].unstack()
 
 
-def generate_latex_table(dataframe):
+def get_latex_table(dataframe):
     return dataframe.style.to_latex()
+
+
+def make_latex_table(ref_renders_names, gpus_renders_names, comp_metrics, scenes_names, res_type):
+    ref_images, gpus_images = load_images(ref_renders_names, gpus_renders_names)
+    dataframe = gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names)
+    requested_dataframe = keyword_to_dataframe(dataframe, res_type)
+    dataframe_latex = get_latex_table(requested_dataframe)
+
+    return dataframe_latex
+
+
+def keyword_to_dataframe(dataframe, res_type="all"):
+    return {
+        "ssim": gpus_renders_ssim(dataframe),
+        "avg": gpus_metric_averages(dataframe),
+        "all": dataframe
+    }.get(res_type)
+
+
+def write_table(dataframe_latex, outfile):
+    with open(outfile, 'w') as file:
+        file.write(dataframe_latex)
+
+
+def valid_scenes_names(scenes_names, ref_renders_names):
+    if scenes_names is None:
+        return range(0, len(ref_renders_names))
+    else:
+        return scenes_names
+
+
+def valid_renders_names(renders_names):
+    if not renders_names[-1].endswith(".png"):
+        return listdir(renders_names[0])
+    else:
+        return renders_names
+
+
+def valid_comp_parameters(scenes_names, ref_renders_names, gpus_renders_names):
+    val_scenes_names = valid_scenes_names(scenes_names, ref_renders_names)
+    val_ref_renders_names = valid_renders_names(ref_renders_names)
+    val_gpus_renders_names = [valid_renders_names(names) for names in gpus_renders_names]
+
+    return val_scenes_names, val_ref_renders_names, val_gpus_renders_names
+
+
+def output_comparisons(dataframe_latex, outfile):
+    print(dataframe_latex)
+    write_table(dataframe_latex, outfile)
+
+
+def generate_comparisons(comp_metrics, ref_renders_names, gpus_renders_names, scenes_names, res_type="all", outfile="out.tex"):
+    scenes_names, ref_renders_names, gpus_renders_names = valid_comp_parameters(scenes_names, ref_renders_names, gpus_renders_names)
+
+    dataframe_latex = make_latex_table(ref_renders_names, gpus_renders_names, comp_metrics, scenes_names, res_type)
+
+    output_comparisons(dataframe_latex, outfile)
+
+
+def parse_args():
+    cli = argparse.ArgumentParser(description="Latex table of comparison metrics for reference & GPU renders",
+                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    cli.add_argument(
+        "reference",
+        metavar="r",
+        nargs="+",
+        type=str,
+        help="Directory or space-separated list of CPU-rendered PNGs"
+    )
+    cli.add_argument(
+        "-g",
+        "--gpu",
+        nargs="+",
+        type=str,
+        action="append",
+        help="Directory or space-separated list of GPU-rendered PNGs",
+        required=True
+    )
+    cli.add_argument(
+        "-n",
+        "--names",
+        nargs="*",
+        type=str,
+        help="Names of the scenes"
+    )
+    cli.add_argument(
+        "-t",
+        "--type",
+        nargs="?",
+        type=str,
+        default="all",
+        choices=["ssim", "all", "avg"],
+        help="What data to output."
+    )
+    cli.add_argument(
+        "-o",
+        "--outfile",
+        nargs="?",
+        type=str,
+        default="out.tex",
+        help="File to output latex table to"
+    )
+    return cli.parse_args()
 
 
 comparison_metrics = [["Peak signal-to-noise ratio", psnr, "PSNR"],
@@ -104,65 +212,7 @@ comparison_metrics = [["Peak signal-to-noise ratio", psnr, "PSNR"],
                       ]
 
 
-def compare(comp_metrics, ref_renders_names, gpus_renders_names, scenes_names, res_type, outfile):
-    ref_images, gpus_images = load_images(ref_renders_names, gpus_renders_names)
-    dataframe = gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names)
-
-    dataframe = {
-        "ssim": gpus_renders_ssim(dataframe),
-        "avg": gpus_metric_averages(dataframe),
-        "all": dataframe
-    }.get(res_type, "all")
-
-    dataframe_latex = generate_latex_table(dataframe)
-    print(dataframe_latex)
-
-    with open(outfile, 'w') as file:
-        file.write(dataframe_latex)
-
-
-def parse_args():
-    cli = argparse.ArgumentParser(description="Comparison metrics for images produced by renderers")
-    cli.add_argument(
-        "-r",
-        "--ref",
-        nargs="*",
-        type=str,
-        required=True
-    )
-    cli.add_argument(
-        "-g",
-        "--gpu",
-        nargs="*",
-        type=str,
-        required=True,
-        action="append"
-    )
-    cli.add_argument(
-        "-s",
-        "--scenes",
-        nargs="*",
-        type=str,
-        required=True
-    )
-    cli.add_argument(
-        "-t",
-        "--type",
-        nargs="?",
-        type=str,
-        default="all"
-    )
-    cli.add_argument(
-        "-o",
-        "--outfile",
-        nargs="?",
-        type=str,
-        default="out.tex"
-    )
-    return cli.parse_args()
-
-
 if __name__ == "__main__":
-    comp_metrics = comparison_metrics
+    comp_metrs = comparison_metrics
     args = parse_args()
-    compare(comp_metrics, args.ref, args.gpu, args.scenes, args.type, args.outfile)
+    generate_comparisons(comp_metrs, args.reference, args.gpu, args.names, args.type, args.outfile)
