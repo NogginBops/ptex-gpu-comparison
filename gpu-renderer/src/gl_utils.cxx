@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include "util.hh"
 
+bool has_KHR_debug = false;
+
 void check_shader_error(int shader)
 {
     int success;
@@ -39,7 +41,7 @@ void check_link_error(int program)
     }
 }
 
-GLuint compile_shader_source(const char* vertex_source, const char* fragment_source)
+GLuint compile_shader_source(const char* name, const char* vertex_name, const char* vertex_source, const char* fragment_name, const char* fragment_source)
 {
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vertexShader, 1, &vertex_source, NULL);
@@ -58,18 +60,26 @@ GLuint compile_shader_source(const char* vertex_source, const char* fragment_sou
     glLinkProgram(program);
     check_link_error(program);
 
+    if (has_KHR_debug)
+    {
+        glObjectLabel(GL_SHADER, vertexShader, -1, vertex_name);
+        glObjectLabel(GL_SHADER, fragmentShader, -1, fragment_name);
+
+        glObjectLabel(GL_PROGRAM, program, -1, name);
+    }
+
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
 
     return program;
 }
 
-GLuint compile_shader(const char* vertex_filename, const char* fragment_filename)
+GLuint compile_shader(const char* name, const char* vertex_filename, const char* fragment_filename)
 {
     const char* vertex_source = read_file(vertex_filename);
     const char* fragment_source = read_file(fragment_filename);
 
-    return compile_shader_source(vertex_source, fragment_source);
+    return compile_shader_source(name, vertex_filename, vertex_source, fragment_filename, fragment_source);
 }
 
 
@@ -79,6 +89,11 @@ GLuint create_color_attachment_texture(color_attachment_desc desc, int width, in
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
+
+    if (has_KHR_debug)
+    {
+        glObjectLabel(GL_TEXTURE, texture, -1, desc.name);
+    }
 
     glTexImage2D(GL_TEXTURE_2D, 0, desc.internal_format, width, height, 0, desc.format, desc.type, NULL);
 
@@ -97,6 +112,12 @@ GLuint create_depth_attachment_texture(depth_attachment_desc desc, int width, in
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
+
+    if (has_KHR_debug)
+    {
+        glObjectLabel(GL_TEXTURE, texture, -1, desc.name);
+    }
+
     glTexImage2D(GL_TEXTURE_2D, 0, desc.internal_format, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, desc.warp_s);
@@ -114,6 +135,11 @@ framebuffer_t create_framebuffer(framebuffer_desc desc, int width, int height)
 
     glGenFramebuffers(1, &framebuffer.framebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
+
+    if (has_KHR_debug)
+    {
+        glObjectLabel(GL_FRAMEBUFFER, framebuffer.framebuffer, -1, desc.name);
+    }
 
     if (desc.depth_attachment)
     {
@@ -186,6 +212,11 @@ GLuint create_vao(const vao_desc* desc, void* vertex_data, int vertex_size, int 
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
 
+    if (has_KHR_debug)
+    {
+        glObjectLabel(GL_VERTEX_ARRAY, vao, -1, desc->name);
+    }
+
     GLuint buffer;
     glGenBuffers(1, &buffer);
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
@@ -193,7 +224,7 @@ GLuint create_vao(const vao_desc* desc, void* vertex_data, int vertex_size, int 
 
     for (int i = 0; i < desc->num_attribs; i++)
     {
-        auto attrib = desc->attribs[i];
+        attribute_desc attrib = desc->attribs[i];
         if (attrib.is_integer_attrib)
         {
             glVertexAttribIPointer(i, attrib.size, attrib.type, vertex_size, (void*)attrib.offset);

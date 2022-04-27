@@ -672,9 +672,14 @@ texture_t create_texture(const char* filepath, texture_desc desc) {
     stbi_uc* img = stbi_load(filepath, &tex.width, &tex.height, &channels, 4);
 
     glGenTextures(1, &tex.texture);
-
+    
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex.texture);
+
+    if (has_KHR_debug)
+    {
+        glObjectLabel(GL_TEXTURE, tex.texture, -1, filepath);
+    }
 
     GLenum internal_format = GL_RGBA8;
     if (desc.is_sRGB) internal_format = GL_SRGB8_ALPHA8;
@@ -702,15 +707,20 @@ texture_t create_texture(const char* filepath, texture_desc desc) {
     return tex;
 }
 
-texture_t create_empty_texture(texture_desc desc, int width, int height, GLenum internal_format) 
+texture_t create_empty_texture(texture_desc desc, int width, int height, GLenum internal_format, const char* name) 
 {
     int channels;
     texture_t tex;
     
     glGenTextures(1, &tex.texture);
-
+    
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, tex.texture);
+
+    if (has_KHR_debug)
+    {
+        glObjectLabel(GL_TEXTURE, tex.texture, -1, name);
+    }
 
     glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 
@@ -757,7 +767,7 @@ int main(int argv, char** argc)
     
     Ptex::String error_str;
     //g_ptex_texture = PtexTexture::open("models/teapot/teapot.ptx", error_str);
-    g_ptex_texture = PtexTexture::open("models/sphere/sphere_sorted_line.ptx", error_str);
+    g_ptex_texture = PtexTexture::open("models/mud_sphere/mud_sphere.ptx", error_str);
 
     if (error_str.empty() == false)
     {
@@ -851,9 +861,27 @@ int main(int argv, char** argc)
     const char* version = (char*)glGetString(GL_VERSION);
     glfwSetWindowTitle(window, version);
     
-    glDebugMessageCallback(GLDebugCallback, NULL);
-    glEnable(GL_DEBUG_OUTPUT);
-    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+    {
+        int num_extensions;
+        glGetIntegerv(GL_NUM_EXTENSIONS, &num_extensions);
+
+        for (size_t i = 0; i < num_extensions; i++)
+        {
+            const char* ext = (char*)glGetStringi(GL_EXTENSIONS, i);
+
+            if (strcmp(ext, "GL_KHR_debug") == 0)
+            {
+                has_KHR_debug = true;
+            }
+        }
+    }
+
+    if (has_KHR_debug)
+    {
+        glDebugMessageCallback(GLDebugCallback, NULL);
+        glEnable(GL_DEBUG_OUTPUT);
+        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+    }
 
     float vertices[] = {
         -0.5f, -0.5f, 0.0f,
@@ -864,6 +892,7 @@ int main(int argv, char** argc)
     // setup "to cpu" output buffer
     {
         color_attachment_desc faceID_desc = {
+            "R16UI: faceID",
             GL_R16UI,
             GL_RED_INTEGER,
             GL_UNSIGNED_INT,
@@ -872,6 +901,7 @@ int main(int argv, char** argc)
         };
 
         color_attachment_desc UV_desc = {
+            "RGB32F: UV",
             GL_RGB32F,
             GL_RGB,
             GL_FLOAT,
@@ -880,6 +910,7 @@ int main(int argv, char** argc)
         };
 
         color_attachment_desc UV_deriv_desc = {
+            "RGBA32F: UV deriv",
             GL_RGBA32F,
             GL_RGBA,
             GL_FLOAT,
@@ -893,6 +924,7 @@ int main(int argv, char** argc)
         color_descriptions[2] = UV_deriv_desc;
 
         depth_attachment_desc depth_desc = {
+            "DEPTH32F: to cpu",
             GL_DEPTH_COMPONENT32F,
             GL_REPEAT, GL_REPEAT,
             GL_LINEAR, GL_LINEAR
@@ -902,6 +934,7 @@ int main(int argv, char** argc)
         depth_descriptions[0] = depth_desc;
 
         g_framebuffer_desc = {
+            "FBO: to cpu",
             3,
             color_descriptions,
             depth_descriptions,
@@ -913,6 +946,7 @@ int main(int argv, char** argc)
     // setup output buffer
     { 
         color_attachment_desc color_desc = {
+            "RGB32F: Color",
             GL_RGB32F,
             GL_RGB,
             GL_FLOAT,
@@ -924,6 +958,7 @@ int main(int argv, char** argc)
         color_descriptions[0] = color_desc;
 
         depth_attachment_desc depth_desc = {
+            "DEPTH32F: Depth",
             GL_DEPTH_COMPONENT32F,
             GL_REPEAT, GL_REPEAT,
             GL_LINEAR, GL_LINEAR
@@ -933,6 +968,7 @@ int main(int argv, char** argc)
         depth_descriptions[0] = depth_desc;
 
         g_output_framebuffer_desc = {
+            "FBO: Color",
             1,
             color_descriptions,
             depth_descriptions
@@ -954,7 +990,7 @@ int main(int argv, char** argc)
         GL_LINEAR, GL_LINEAR,
         true
     };
-    g_cpu_stream_tex = create_empty_texture(cpu_stream_tex_desc, width, height, GL_RGB32F);
+    g_cpu_stream_tex = create_empty_texture(cpu_stream_tex_desc, width, height, GL_RGB32F, "cpu stream texture");
 
     mesh_t* mesh = load_obj("models/susanne.obj");
 
@@ -962,18 +998,20 @@ int main(int argv, char** argc)
     {
         attribute_desc* attribs = new attribute_desc[3];
         attribs[0] = {
-            3, GL_FLOAT, GL_FALSE, offsetof(vertex_t, position), false,
+            "Position", 3, GL_FLOAT, GL_FALSE, offsetof(vertex_t, position), false,
         };
         attribs[1] = {
-            2, GL_FLOAT, GL_TRUE, offsetof(vertex_t, texcoord), false,
+            "UV", 2, GL_FLOAT, GL_TRUE, offsetof(vertex_t, texcoord), false,
         };
         attribs[2] = {
-            3, GL_FLOAT, GL_FALSE, offsetof(vertex_t, normal), false,
+            "Normal", 3, GL_FLOAT, GL_FALSE, offsetof(vertex_t, normal), false,
         };
 
-        vao_desc vao_desc;
-        vao_desc.num_attribs = 3;
-        vao_desc.attribs = attribs;
+        vao_desc vao_desc = {
+            "Susanne",
+            3,
+            attribs,
+        };
 
         vao = create_vao(&vao_desc, mesh->vertices, sizeof(vertex_t), mesh->num_faces * 3);
 
@@ -983,25 +1021,27 @@ int main(int argv, char** argc)
     GLuint ptex_vao;
     {
         //g_teapot_mesh = load_ptex_mesh("models/teapot/teapot.obj");
-        g_teapot_mesh = load_ptex_mesh("models/sphere/sphere.obj");
+        g_teapot_mesh = load_ptex_mesh("models/mud_sphere/mud_sphere.obj");
 
         attribute_desc* attribs = new attribute_desc[4];
         attribs[0] = {
-            3, GL_FLOAT, GL_FALSE, offsetof(ptex_vertex_t, position), false,
+            "Position", 3, GL_FLOAT, GL_FALSE, offsetof(ptex_vertex_t, position), false,
         };
         attribs[1] = {
-            3, GL_FLOAT, GL_FALSE, offsetof(ptex_vertex_t, normal), false,
+            "Normal", 3, GL_FLOAT, GL_FALSE, offsetof(ptex_vertex_t, normal), false,
         };
         attribs[2] = {
-            2, GL_FLOAT, GL_TRUE, offsetof(ptex_vertex_t, uv), false,
+            "UV", 2, GL_FLOAT, GL_TRUE, offsetof(ptex_vertex_t, uv), false,
         };
         attribs[3] = {
-            1, GL_INT, GL_FALSE, offsetof(ptex_vertex_t, face_id), true,
+            "FaceID", 1, GL_INT, GL_FALSE, offsetof(ptex_vertex_t, face_id), true,
         };
 
-        vao_desc vao_desc;
-        vao_desc.num_attribs = 4;
-        vao_desc.attribs = attribs;
+        vao_desc vao_desc = {
+            "ptex model",
+            4,
+            attribs,
+        };
 
         ptex_vao = create_vao(&vao_desc, g_teapot_mesh->vertices, sizeof(ptex_vertex_t), g_teapot_mesh->num_vertices);
 
@@ -1013,10 +1053,10 @@ int main(int argv, char** argc)
     //GLuint program = compile_shader("shaders/default.vert", "shaders/default.frag");
     //GLuint outputProgram = compile_shader("shaders/default.vert", "shaders/output.frag");
 
-    GLuint ptex_program = compile_shader("shaders/ptex.vert", "shaders/ptex.frag");
-    GLuint ptex_output_program = compile_shader("shaders/ptex.vert", "shaders/ptex_output.frag");
+    GLuint ptex_program = compile_shader("ptex_program", "shaders/ptex.vert", "shaders/ptex.frag");
+    GLuint ptex_output_program = compile_shader("ptex_output_program", "shaders/ptex.vert", "shaders/ptex_output.frag");
 
-    GLuint cpu_stream_program = compile_shader("shaders/fullscreen.vert", "shaders/fullscreen.frag");
+    GLuint cpu_stream_program = compile_shader("cpu_stream_program", "shaders/fullscreen.vert", "shaders/fullscreen.frag");
 
     mat4_t view = 
     { {
@@ -1042,6 +1082,7 @@ int main(int argv, char** argc)
 
     mat4_t model = mat4_scale(0.5f, 0.5f, 0.5f);
     model = mat4_scale(1.0f, 1.f, 1.f);
+    model = mat4_scale(0.01f, 0.01f, 0.01f);
 
     mat4_t mvp = mat4_mul_mat4(model, vp);
 
