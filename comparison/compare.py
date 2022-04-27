@@ -151,8 +151,11 @@ def output_comparisons(dataframe_latex, outfile):
     write_table(dataframe_latex, outfile)
 
 
-def generate_comparisons(comp_metrics, ref_renders_names, gpus_renders_names, scenes_names, res_type="all", outfile="out.tex"):
-    scenes_names, ref_renders_names, gpus_renders_names = valid_comp_parameters(scenes_names, ref_renders_names, gpus_renders_names)
+def generate_comparisons(comp_metrics, ref_renders_names, gpus_renders_names, scenes_names, res_type="all",
+                         outfile="out.tex"):
+    scenes_names, ref_renders_names, gpus_renders_names = valid_comp_parameters(scenes_names,
+                                                                                ref_renders_names,
+                                                                                gpus_renders_names)
 
     dataframe_latex = make_latex_table(ref_renders_names, gpus_renders_names, comp_metrics, scenes_names, res_type)
 
@@ -210,7 +213,6 @@ comparison_metrics = [["Peak signal-to-noise ratio", psnr, "PSNR"],
                       ["Structural similarity index measure", ssim, "SSIM"],
                       ["Normalized root mean squared error", nrmse, "NRMSE"]
                       ]
-
 
 if __name__ == "__main__":
     comp_metrs = comparison_metrics
