@@ -11,6 +11,7 @@ set(HEADERS
 	src/maths.hh
     src/mesh_loading.hh
     src/gl_utils.hh
+    src/ptex_utils.hh
     src/util.hh
     src/platform.hh
 )
@@ -21,6 +22,7 @@ set(SOURCES
 	src/maths.cxx
     src/mesh_loading.cxx
     src/gl_utils.cxx
+    src/ptex_utils.cxx
     src/util.cxx
     src/platform.cxx
 )

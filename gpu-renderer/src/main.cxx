@@ -21,6 +21,7 @@
 
 #include "util.hh"
 #include "gl_utils.hh"
+#include "ptex_utils.hh"
 
 #include "platform.hh"
 
@@ -833,7 +834,7 @@ int main(int argv, char** argc)
         printf("Failed to create GLFW window\n");
         return EXIT_FAILURE;
     }
-
+    
     glfwMakeContextCurrent(window);
 
     // Enable VSync
@@ -861,6 +862,7 @@ int main(int argv, char** argc)
     const char* version = (char*)glGetString(GL_VERSION);
     glfwSetWindowTitle(window, version);
     
+    // Check for GL_KHR_debug
     {
         int num_extensions;
         glGetIntegerv(GL_NUM_EXTENSIONS, &num_extensions);
@@ -982,7 +984,6 @@ int main(int argv, char** argc)
         GL_LINEAR, GL_LINEAR,
         false,
     };
-
     g_tex_test = create_texture("textures/uv_space.png", tex_test_desc);
 
     texture_desc cpu_stream_tex_desc = {
@@ -992,6 +993,12 @@ int main(int argv, char** argc)
     };
     g_cpu_stream_tex = create_empty_texture(cpu_stream_tex_desc, width, height, GL_RGB32F, "cpu stream texture");
 
+    // FIXME
+    {
+        gl_ptex_textures ptex_textures = extract_textures(g_ptex_texture);
+        create_gl_texture_arrays(ptex_textures);
+    }
+    
     mesh_t* mesh = load_obj("models/susanne.obj");
 
     GLuint vao;
@@ -1058,15 +1065,9 @@ int main(int argv, char** argc)
 
     GLuint cpu_stream_program = compile_shader("cpu_stream_program", "shaders/fullscreen.vert", "shaders/fullscreen.frag");
 
-    mat4_t view = 
-    { {
-        {1, 0, -0, -0},
-        {0, 1, 4.37114e-08f, -0.3},
-        {0, -4.37114e-08f, 1, -1.5f},
-        {0, 0, 0, 1}
-    } };
-    view = calc_view_matrix(g_camera);
+    mat4_t view = calc_view_matrix(g_camera);
 
+    // FIXME: Setup projection matrix from settings!
     mat4_t proj =
     { {
         {1.73205f, 0, 0, 0},
@@ -1086,15 +1087,6 @@ int main(int argv, char** argc)
 
     mat4_t mvp = mat4_mul_mat4(model, vp);
 
-    //glUseProgram(program);
-    
-    //int tex_location = glGetUniformLocation(program, "tex");
-    //glUniform1i(tex_location, 0);
-
-    //int vp_location = glGetUniformLocation(program, "mvp");
-    //glUniformMatrix4fv(vp_location, 1, GL_FALSE, (float*)&mvp);
-
-    
     uniform_mat4(ptex_program, "mvp", &mvp);
     uniform_mat4(ptex_output_program, "mvp", &mvp);
 
@@ -1109,7 +1101,7 @@ int main(int argv, char** argc)
     {
         glfwPollEvents();
 
-
+        // Update mvp matrix in programs
         {
             view = calc_view_matrix(g_camera);
             view = mat4_transpose(view);
@@ -1121,14 +1113,13 @@ int main(int argv, char** argc)
             uniform_mat4(ptex_output_program, "mvp", &mvp);
         }
 
-
         // FIXME: Take the screenshot after rendering this frame?
         if (takeScreenshot)
         {
             // We need to render out:
-            // FaceID, UV
+            // FaceID, 
+            // UV
             // UW1, VW2, UW2, VW2
-            // 
 
             int width, height;
             glfwGetFramebufferSize(window, &width, &height);
