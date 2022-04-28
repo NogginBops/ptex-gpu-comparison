@@ -787,7 +787,7 @@ int main(int argv, char** argc)
         printf("%zu %s: %s\n", i, name, metadataTypeString[metaData]);    
     }
 
-    g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ PtexFilter::FilterType::f_point, false, 0, false });
+    g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ PtexFilter::FilterType::f_bilinear, false, 0, false });
 
     printf("Hello, world!\n");
 
