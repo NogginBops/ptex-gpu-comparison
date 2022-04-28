@@ -9,7 +9,7 @@ layout (location = 2) out vec4 outUVDeriv;
 
 void main()
 {
-	outFaceID = uint(faceID + 1);
+	outFaceID = uint(faceID) + 1u;
 	outUV = UV;
 	outUVDeriv.xy = dFdx(UV);
 	outUVDeriv.zw = dFdy(UV);

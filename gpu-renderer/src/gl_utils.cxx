@@ -133,6 +133,9 @@ framebuffer_t create_framebuffer(framebuffer_desc desc, int width, int height)
 {
     framebuffer_t framebuffer = { 0 };
 
+    framebuffer.width = width;
+    framebuffer.height = height;
+
     glGenFramebuffers(1, &framebuffer.framebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
 
@@ -202,6 +205,9 @@ void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int
         printf("Framebuffer not complete! Code: %d\n", status);
     }
 
+    framebuffer->width = width;
+    framebuffer->height = height;
+
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
@@ -241,6 +247,12 @@ GLuint create_vao(const vao_desc* desc, void* vertex_data, int vertex_size, int 
     return vao;
 }
 
+void uniform_1i(GLuint program, const char* name, int value)
+{
+    glUseProgram(program);
+    GLint location = glGetUniformLocation(program, name);
+    glUniform1i(location, value);
+}
 
 void uniform_mat4(GLuint program, const char* name, mat4_t* mat)
 {

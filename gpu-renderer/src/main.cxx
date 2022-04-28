@@ -25,25 +25,10 @@
 
 #include "platform.hh"
 
-typedef struct {
-    GLenum wrap_s, wrap_t;
-    GLenum mag_filter, min_filter;
-    bool is_sRGB;
-} texture_desc;
-
-typedef struct {
-    int width;
-    int height;
-    GLuint texture;
-    GLenum wrap_s, wrap_t;
-    GLenum mag_filter, min_filter;
-    bool is_sRGB;
-
-    uint8_t* data;
-} texture_t;
+#include "array.hh"
 
 framebuffer_desc g_framebuffer_desc;
-framebuffer_t g_frambuffer;
+framebuffer_t g_framebuffer;
 
 framebuffer_desc g_output_framebuffer_desc;
 framebuffer_t g_output_framebuffer;
@@ -59,6 +44,11 @@ bool stream_cpu_result = false;
 texture_t g_cpu_stream_tex;
 
 typedef struct {
+    float fovy;
+    float aspect;
+    float near_plane;
+    float far_plane;
+
     vec3_t center;
     float distance, distance_t;
     float x_axis_rot, y_axis_rot;
@@ -111,9 +101,12 @@ void GLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLs
 
 void GLFWFrambufferSizeCallback(GLFWwindow* window, int width, int height)
 {
-    recreate_framebuffer(&g_frambuffer, g_framebuffer_desc, width, height);
+    if (width == 0 || height == 0) return;
+    recreate_framebuffer(&g_framebuffer, g_framebuffer_desc, width, height);
     recreate_framebuffer(&g_output_framebuffer, g_output_framebuffer_desc, width, height);
     glViewport(0, 0, width, height);
+
+    g_camera.aspect = width / (float)height;
 }
 
 bool takeScreenshot = false;
@@ -276,14 +269,6 @@ void* img_read(const char* filename, int* width, int* height, int* format)
 
     return data;
 }
-
-typedef struct {
-    uint8_t r, g, b;
-} rgb8_t;
-
-typedef struct {
-    uint8_t r, g, b, a;
-} rgba8_t;
 
 uint8_t convert_float_uint(float f)
 {
@@ -767,8 +752,8 @@ int main(int argv, char** argc)
     change_directory("../../../assets");
     
     Ptex::String error_str;
-    //g_ptex_texture = PtexTexture::open("models/teapot/teapot.ptx", error_str);
-    g_ptex_texture = PtexTexture::open("models/mud_sphere/mud_sphere.ptx", error_str);
+    g_ptex_texture = PtexTexture::open("models/teapot/teapot.ptx", error_str);
+    //g_ptex_texture = PtexTexture::open("models/mud_sphere/mud_sphere.ptx", error_str);
 
     if (error_str.empty() == false)
     {
@@ -803,14 +788,6 @@ int main(int argv, char** argc)
     }
 
     g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ PtexFilter::FilterType::f_point, false, 0, false });
-
-    g_camera = {
-        { 0, 1, 0 }, // center
-        float_eerp(CAMERA_MIN_DIST, CAMERA_MAX_DIST, 0.3f), 0.3f, // distance, distance_t
-        0, 0,
-
-        { 0, 0, 0, 1 } // quat
-    };
 
     printf("Hello, world!\n");
 
@@ -858,6 +835,17 @@ int main(int argv, char** argc)
     glfwGetFramebufferSize(window, &width, &height);
     glViewport(0, 0, width, height);
 
+    g_camera = {
+       TO_RADIANS(80), // fovy
+       width / (float)height, // aspect
+       0.01f, 1000.0f, // near, far
+
+       { 0, 1, 0 }, // center
+       float_eerp(CAMERA_MIN_DIST, CAMERA_MAX_DIST, 0.3f), 0.3f, // distance, distance_t
+       0, 0,
+
+       { 0, 0, 0, 1 } // quat
+    };
 
     const char* version = (char*)glGetString(GL_VERSION);
     glfwSetWindowTitle(window, version);
@@ -942,7 +930,7 @@ int main(int argv, char** argc)
             depth_descriptions,
         };
 
-        g_frambuffer = create_framebuffer(g_framebuffer_desc, width, height);
+        g_framebuffer = create_framebuffer(g_framebuffer_desc, width, height);
     }
 
     // setup output buffer
@@ -994,9 +982,10 @@ int main(int argv, char** argc)
     g_cpu_stream_tex = create_empty_texture(cpu_stream_tex_desc, width, height, GL_RGB32F, "cpu stream texture");
 
     // FIXME
+    gl_ptex_data gl_ptex_data;
     {
         gl_ptex_textures ptex_textures = extract_textures(g_ptex_texture);
-        create_gl_texture_arrays(ptex_textures);
+        gl_ptex_data = create_gl_texture_arrays(ptex_textures, GL_NEAREST, GL_NEAREST);
     }
     
     mesh_t* mesh = load_obj("models/susanne.obj");
@@ -1027,8 +1016,8 @@ int main(int argv, char** argc)
 
     GLuint ptex_vao;
     {
-        //g_teapot_mesh = load_ptex_mesh("models/teapot/teapot.obj");
-        g_teapot_mesh = load_ptex_mesh("models/mud_sphere/mud_sphere.obj");
+        g_teapot_mesh = load_ptex_mesh("models/teapot/teapot.obj");
+        //g_teapot_mesh = load_ptex_mesh("models/mud_sphere/mud_sphere.obj");
 
         attribute_desc* attribs = new attribute_desc[4];
         attribs[0] = {
@@ -1063,6 +1052,15 @@ int main(int argv, char** argc)
     GLuint ptex_program = compile_shader("ptex_program", "shaders/ptex.vert", "shaders/ptex.frag");
     GLuint ptex_output_program = compile_shader("ptex_output_program", "shaders/ptex.vert", "shaders/ptex_output.frag");
 
+    // Setup the uniform block bindings
+    {
+        int blockIndex = glGetUniformBlockIndex(ptex_program, "FaceDataUniform");
+        glUniformBlockBinding(ptex_program, blockIndex, 0);
+
+        blockIndex = glGetUniformBlockIndex(ptex_output_program, "FaceDataUniform");
+        glUniformBlockBinding(ptex_output_program, blockIndex, 0);
+    }
+    
     GLuint cpu_stream_program = compile_shader("cpu_stream_program", "shaders/fullscreen.vert", "shaders/fullscreen.frag");
 
     mat4_t view = calc_view_matrix(g_camera);
@@ -1075,6 +1073,7 @@ int main(int argv, char** argc)
         {0, 0, -1.00002f, -0.200002f},
         {0, 0, -1, 0}
     } };
+    proj = mat4_perspective(g_camera.fovy, width / (float)height, 0.01f, 1000.0f);
     
     view = mat4_transpose(view);
     proj = mat4_transpose(proj);
@@ -1083,12 +1082,21 @@ int main(int argv, char** argc)
 
     mat4_t model = mat4_scale(0.5f, 0.5f, 0.5f);
     model = mat4_scale(1.0f, 1.f, 1.f);
-    model = mat4_scale(0.01f, 0.01f, 0.01f);
+    //model = mat4_scale(0.01f, 0.01f, 0.01f);
 
     mat4_t mvp = mat4_mul_mat4(model, vp);
 
     uniform_mat4(ptex_program, "mvp", &mvp);
     uniform_mat4(ptex_output_program, "mvp", &mvp);
+
+    {
+        char name[32];
+        for (int i = 0; i < 32; i++)
+        {
+            sprintf(name, "aTex[%d]", i);
+            uniform_1i(ptex_program, name, i);
+        }
+    }
 
     glEnable(GL_DEPTH_TEST);
 
@@ -1096,6 +1104,8 @@ int main(int argv, char** argc)
 
     glBindVertexArray(vao);
     glBindVertexArray(ptex_vao);
+
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, gl_ptex_data.face_data_buffer);
 
     while (glfwWindowShouldClose(window) == false)
     {
@@ -1105,6 +1115,9 @@ int main(int argv, char** argc)
         {
             view = calc_view_matrix(g_camera);
             view = mat4_transpose(view);
+
+            proj = mat4_perspective(g_camera.fovy, g_camera.aspect, g_camera.near_plane, g_camera.far_plane);
+            proj = mat4_transpose(proj);
 
             mat4_t vp = mat4_mul_mat4(view, proj);
             mat4_t mvp = mat4_mul_mat4(model, vp);
@@ -1124,7 +1137,7 @@ int main(int argv, char** argc)
             int width, height;
             glfwGetFramebufferSize(window, &width, &height);
             
-            glBindFramebuffer(GL_FRAMEBUFFER, g_frambuffer.framebuffer);
+            glBindFramebuffer(GL_FRAMEBUFFER, g_framebuffer.framebuffer);
 
             glReadBuffer(GL_COLOR_ATTACHMENT0);
             void* faceID_buffer = malloc(width * height * sizeof(uint16_t));
@@ -1193,7 +1206,10 @@ int main(int argv, char** argc)
             int width, height;
             glfwGetFramebufferSize(window, &width, &height);
 
-            glBindFramebuffer(GL_FRAMEBUFFER, g_frambuffer.framebuffer);
+            assert(g_framebuffer.width == width);
+            assert(g_framebuffer.height == height);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, g_framebuffer.framebuffer);
 
             glReadBuffer(GL_COLOR_ATTACHMENT0);
             void* faceID_buffer = malloc(width * height * sizeof(uint16_t));
@@ -1220,7 +1236,7 @@ int main(int argv, char** argc)
             free(cpu_buffer);
         }
 
-        glBindFramebuffer(GL_FRAMEBUFFER, g_frambuffer.framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, g_framebuffer.framebuffer);
 
         GLenum drawBuffers[] = {
             GL_COLOR_ATTACHMENT0,
@@ -1248,16 +1264,35 @@ int main(int argv, char** argc)
         glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, g_tex_test.texture);
+        //glActiveTexture(GL_TEXTURE0);
+        //glBindTexture(GL_TEXTURE_2D, g_tex_test.texture);
+        
+        // Bind all textures
+        for (int i = 0; i < gl_ptex_data.array_textures->size; i++)
+        {
+            glActiveTexture(GL_TEXTURE0 + i);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, (*gl_ptex_data.array_textures).arr[i].texture);
+        }
 
         glDrawArrays(GL_TRIANGLES, 0, g_teapot_mesh->num_vertices);
 
-        glBindTexture(GL_TEXTURE_2D, 0);
+        //glBindTexture(GL_TEXTURE_2D, 0);
+        //glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+        // unBind all textures
+        for (int i = 0; i < gl_ptex_data.array_textures->size; i++)
+        {
+            glActiveTexture(GL_TEXTURE0 + i);
+            glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+        }
+        glActiveTexture(GL_TEXTURE0);
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, g_output_framebuffer.framebuffer);
 
+        //int width, height;
+        //glfwGetFramebufferSize(window, &width, &height);
+        //glViewport(0, 0, width, height);
         glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
         if (stream_cpu_result)

@@ -14,6 +14,7 @@ set(HEADERS
     src/ptex_utils.hh
     src/util.hh
     src/platform.hh
+    src/array.hh
 )
 
 set(SOURCES 

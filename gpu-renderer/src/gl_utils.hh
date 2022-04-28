@@ -36,6 +36,7 @@ typedef struct {
     int n_color_attachments;
     GLuint* color_attachments;
     GLuint depth_attachment;
+    int width, height;
 } framebuffer_t;
 
 //void check_shader_error(int shader);
@@ -65,7 +66,35 @@ typedef struct {
 
 GLuint create_vao(const vao_desc* desc, void* vertex_data, int vertex_size, int vertex_count);
 
+typedef struct {
+    GLenum wrap_s, wrap_t;
+    GLenum mag_filter, min_filter;
+    bool is_sRGB;
+} texture_desc;
 
+typedef struct {
+    int width;
+    int height;
+    GLuint texture;
+    GLenum wrap_s, wrap_t;
+    GLenum mag_filter, min_filter;
+    bool is_sRGB;
+
+    uint8_t* data;
+} texture_t;
+
+typedef struct {
+    int width;
+    int height;
+    int slices;
+    GLuint texture;
+    GLenum wrap_s, wrap_t;
+    GLenum mag_filter, min_filter;
+    bool is_sRGB;
+} array_texture_t;
+
+
+void uniform_1i(GLuint program, const char* name, int value);
 void uniform_mat4(GLuint program, const char* name, mat4_t* mat);
 
 
