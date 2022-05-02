@@ -2,8 +2,12 @@ import pandas as pd
 import argparse
 from skimage import io
 from skimage import metrics
+from skimage import util
+# from sklearn import metrics as learnmetrics
 from os import listdir
 from os.path import isfile, join
+import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 
 
 def psnr(ref, res):
@@ -20,6 +24,11 @@ def ssim(ref, res):
 
 def nrmse(ref, res):
     return metrics.normalized_root_mse(ref, res)
+
+
+def mae(ref, res):
+    # learnmetrics.mean_absolute_error(ref, res)
+    return 1337
 
 
 def read_image(img_name):
@@ -153,33 +162,74 @@ def valid_comp_parameters(metrics_names, scenes_names, ref_renders_names, gpus_r
 
 
 def output_comparisons(dataframe_latex, outfile):
+    print("Output saved in", outfile)
     print(dataframe_latex)
     write_table(dataframe_latex, outfile)
 
 
-def generate_comparisons(metrics_names, ref_renders_names, gpus_renders_names, scenes_names, res_type="all",
-                         outfile="out.tex"):
-    selected_metrics, scenes_names, ref_renders_names, gpus_renders_names = valid_comp_parameters(metrics_names,
-                                                                                                  scenes_names,
-                                                                                                  ref_renders_names,
-                                                                                                  gpus_renders_names)
+def output_comparison_image(image1, image2, diff_image, outfile):
+    fig = plt.figure(figsize=(8, 9))
 
-    dataframe_latex = make_latex_table(ref_renders_names, gpus_renders_names, selected_metrics, scenes_names, res_type)
+    gs = GridSpec(3, 2)
+    ax0 = fig.add_subplot(gs[0, 0])
+    ax1 = fig.add_subplot(gs[0, 1])
+    ax2 = fig.add_subplot(gs[1:, :])
+
+    ax0.imshow(image1, cmap=plt.cm.gray)
+    ax0.set_title('Image 1')
+    ax1.imshow(image2, cmap=plt.cm.gray)
+    ax1.set_title('Image 2')
+    ax2.imshow(diff_image, cmap=plt.cm.viridis)
+    ax2.set_title('Diff comparison')
+    for a in (ax0, ax1, ax2):
+        a.axis('off')
+    plt.tight_layout()
+    plt.plot()
+    plt.savefig(outfile)
+    print("Output saved in", outfile)
+
+
+def generate_comparison_image(image1_name, image2_name, outfile="out.png"):
+    image1 = read_image(image1_name)
+    image2 = read_image(image2_name)
+
+    diff_image = util.compare_images(image1, image2, method="diff")
+
+    output_comparison_image(image1, image2, diff_image, outfile)
+
+
+def generate_comparison_table(metrics_names, ref_renders_names, gpus_renders_names, scenes_names, res_type="all",
+                         outfile="out.tex"):
+    val_metrics_names, val_scenes_names, val_ref_renders_names, val_gpus_renders_names = valid_comp_parameters(
+        metrics_names,
+        scenes_names,
+        ref_renders_names,
+        gpus_renders_names)
+
+    dataframe_latex = make_latex_table(val_ref_renders_names, val_gpus_renders_names, val_metrics_names, val_scenes_names, res_type)
 
     output_comparisons(dataframe_latex, outfile)
 
 
-def parse_args():
-    cli = argparse.ArgumentParser(description="Latex table of comparison metrics for reference & GPU renders",
-                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    cli.add_argument(
+def parser_generate_comparison_image(image_args):
+    generate_comparison_image(image_args.image1, image_args.image2, image_args.outfile)
+
+
+def parser_generate_comparison_table(table_args):
+    generate_comparison_table(table_args.metrics, table_args.reference, table_args.gpu, table_args.names,
+                              table_args.view, table_args.outfile)
+
+
+def init_table_subparser(tableparser):
+    tableparser.set_defaults(func=parser_generate_comparison_table)
+    tableparser.add_argument(
         "reference",
         metavar="r",
         nargs="+",
         type=str,
         help="Directory or space-separated list of CPU-rendered PNGs"
     )
-    cli.add_argument(
+    tableparser.add_argument(
         "-g",
         "--gpu",
         nargs="+",
@@ -188,14 +238,14 @@ def parse_args():
         help="Directory or space-separated list of GPU-rendered PNGs",
         required=True
     )
-    cli.add_argument(
+    tableparser.add_argument(
         "-n",
         "--names",
         nargs="*",
         type=str,
         help="Names of the scenes"
     )
-    cli.add_argument(
+    tableparser.add_argument(
         "-v",
         "--view",
         nargs="?",
@@ -204,7 +254,7 @@ def parse_args():
         choices=["singlemetric", "all", "metricsavg"],
         help="What data to output"
     )
-    cli.add_argument(
+    tableparser.add_argument(
         "-o",
         "--outfile",
         nargs="?",
@@ -212,7 +262,7 @@ def parse_args():
         default="out.tex",
         help="File to output latex table to"
     )
-    cli.add_argument(
+    tableparser.add_argument(
         "-m",
         "--metrics",
         nargs="*",
@@ -220,6 +270,44 @@ def parse_args():
         default=["psnr", "mse", "ssim", "nrmse"],
         help="Metrics to be calculated"
     )
+
+
+def init_image_subparser(imageparser):
+    imageparser.set_defaults(func=parser_generate_comparison_image)
+    imageparser.add_argument(
+        "image1",
+        metavar="i1",
+        nargs="?",
+        type=str,
+        help="Comparison image 1"
+    )
+    imageparser.add_argument(
+        "image2",
+        metavar="i2",
+        nargs="?",
+        type=str,
+        help="Comparison image 2"
+    )
+    imageparser.add_argument(
+        "-o",
+        "--outfile",
+        nargs="?",
+        type=str,
+        default="out.png",
+        help="File to output image to"
+    )
+
+
+def parse_args():
+    cli = argparse.ArgumentParser(description="Latex table of comparison metrics for reference & GPU renders",
+                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    subparsers = cli.add_subparsers(title="subcommands", help="Choose to output image or table")
+    table_parser = subparsers.add_parser("table", help="table help")
+    image_parser = subparsers.add_parser("image", help="image help")
+
+    init_table_subparser(table_parser)
+    init_image_subparser(image_parser)
+
     return cli.parse_args()
 
 
@@ -227,10 +315,11 @@ comparison_metrics = {
     "psnr": psnr,
     "mse": mse,
     "ssim": ssim,
-    "nrmse": nrmse
+    "nrmse": nrmse,
+    "mae": mae
 }
 
 if __name__ == "__main__":
     comp_metrs = comparison_metrics
     args = parse_args()
-    generate_comparisons(args.metrics, args.reference, args.gpu, args.names, args.view, args.outfile)
+    args.func(args)
