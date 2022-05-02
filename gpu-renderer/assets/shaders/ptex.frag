@@ -8,70 +8,86 @@ flat in uint neighbor23Indices;
 
 out vec4 FragColor;
 
-const mat2x3 neighborTransforms[16] = mat2x3[16](
-    mat2x3(
-        -1, 0, 1,
-        0, -1, 0
+const mat3x2 neighborTransforms[16] = mat3x2[16](
+    mat3x2(
+        -1, 0,
+        0, -1,
+        1, 0
     ),
-    mat2x3(
-        0, 1, 1,
-        -1, 0, 1
+    mat3x2(
+        0, -1,
+        1, 0,
+        1, 1
     ),
-    mat2x3(
-        1, 0, 0,
-        0, 1, 1
+    mat3x2(
+        1, 0,
+        0, 1,
+        0, 1
     ),
-    mat2x3(
-        0, -1, 0,
-        1, 0, 0
+    mat3x2(
+        0, 1,
+        -1, 0,
+        0, 0
     ),
-    mat2x3(
-        0, -1, 1,
-        1, 0, -1
+    mat3x2(
+        0, 1,
+        -1, 0,
+        1, -1
     ),
-    mat2x3(
-        -1, 0, 2,
-        0, -1, -1
+    mat3x2(
+        -1, 0,
+        0, -1,
+        2, -1
     ),
-    mat2x3(
-        0, 1, 0,
-        -1, 0, 2
+    mat3x2(
+        0, -1,
+        1, 0,
+        0, 2
     ),
-    mat2x3(
-        1, 0, -1,
-        0, 1, 0
+    mat3x2(
+        1, 0,
+        0, 1,
+        -1, 0
     ),
-    mat2x3(
-        1, 0, 0,
-        0, 1, -1
+    mat3x2(
+        1, 0,
+        0, 1,
+        0, -1
     ),
-    mat2x3(
-        0, -1, 2,
-        1, 0, 0
+    mat3x2(
+        0, 1,
+        -1, 0,
+        2, 0
     ),
-    mat2x3(
-        -1, 0, 1,
-        0, -1, 2
+    mat3x2(
+        -1, 0,
+        0, -1,
+        1, 2
     ),
-    mat2x3(
-        0, 1, -1,
-        -1, 0, 1
+    mat3x2(
+        0, -1,
+        1, 0,
+        -1, 1
     ),
-    mat2x3(
-        0, 1, 0,
-        -1, 0, 0
+    mat3x2(
+        0, -1,
+        1, 0,
+        0, 0
     ),
-    mat2x3(
-        1, 0, 1,
-        0, 1, 0
+    mat3x2(
+        1, 0,
+        0, 1,
+        1, 0
     ),
-    mat2x3(
-        0, -1, 1,
-        1, 0, 1
+    mat3x2(
+        0, 1,
+        -1, 0,
+        1, 1
     ),
-    mat2x3(
-        -1, 0, 0,
-        0, -1, 1
+    mat3x2(
+        -1, 0,
+        0, -1,
+        0, 1
     )
 );
 
@@ -80,12 +96,11 @@ struct FaceData
 	uint texIDsliceID;
 	uint neighbor01Indices;
 	uint neighbor23Indices;
-	uint neighbor01Transform;
-	uint neighbor23Transform;
+	uint neighbor0123Transform;
 };
 
 #define MAX_FACES 1024
-uniform FaceDataUniform {
+layout(std140) uniform FaceDataUniform {
 	FaceData face_data[MAX_FACES];
 };
 
@@ -103,14 +118,15 @@ vec4 ptexture_single(sampler2DArray tex[32], vec2 uv, uint texIDsliceID)
     uint texID = texIDsliceID & 0xFFFFu;
     uint sliceID = texIDsliceID >> 16;
 
-    return texture(tex[texID], vec3(UV, sliceID));
+    return texture(tex[texID], vec3(uv, sliceID));
 }
 
-vec4 ptexture(sampler2DArray tex[32], vec2 uv, int faceID)
+vec3 ptexture(sampler2DArray tex[32], vec2 uv, int faceID)
 {
     FaceData data = face_data[faceID];
 
-    vec4 sample0 = ptexture_single(tex, uv, data.texIDsliceID);
+    vec4 color = vec4(0);
+    color += ptexture_single(tex, uv, data.texIDsliceID);
 
     uint neighbor0_id = data.neighbor01Indices & 0xFFFFu;
     uint neighbor1_id = data.neighbor01Indices >> 16;
@@ -118,12 +134,22 @@ vec4 ptexture(sampler2DArray tex[32], vec2 uv, int faceID)
     uint neighbor2_id = data.neighbor23Indices & 0xFFFFu;
     uint neighbor3_id = data.neighbor23Indices >> 16;
 
-    vec4 sample1 = ptexture_single(tex, 1-uv, face_data[neighbor0_id].texIDsliceID);
-    vec4 sample2 = ptexture_single(tex, 1-uv, face_data[neighbor1_id].texIDsliceID);
-    vec4 sample3 = ptexture_single(tex, 1-uv, face_data[neighbor2_id].texIDsliceID);
-    vec4 sample4 = ptexture_single(tex, 1-uv, face_data[neighbor3_id].texIDsliceID);
+    uint n0_transform = (face_data[neighbor0_id].neighbor0123Transform >> 0 ) & 0xFFu;
+    uint n1_transform = (face_data[neighbor0_id].neighbor0123Transform >> 8 ) & 0xFFu;
+    uint n2_transform = (face_data[neighbor0_id].neighbor0123Transform >> 16) & 0xFFu;
+    uint n3_transform = (face_data[neighbor0_id].neighbor0123Transform >> 24) & 0xFFu;
+    
+    vec2 n0_uv = neighborTransforms[n0_transform] * vec3(uv, 1);
+    vec2 n1_uv = neighborTransforms[n1_transform] * vec3(uv, 1);
+    vec2 n2_uv = neighborTransforms[n2_transform] * vec3(uv, 1);
+    vec2 n3_uv = neighborTransforms[n3_transform] * vec3(uv, 1);
 
-    return (sample0) / 1.0;
+    color += ptexture_single(tex, n0_uv, face_data[neighbor0_id].texIDsliceID);
+    color += ptexture_single(tex, n1_uv, face_data[neighbor1_id].texIDsliceID);
+    color += ptexture_single(tex, n2_uv, face_data[neighbor2_id].texIDsliceID);
+    color += ptexture_single(tex, n3_uv, face_data[neighbor3_id].texIDsliceID);
+
+    return color.rgb / color.a;
 }
 
 void main()

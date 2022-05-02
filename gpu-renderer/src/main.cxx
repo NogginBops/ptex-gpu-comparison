@@ -97,6 +97,11 @@ void GLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLs
         return;
 
     printf("%u: %s\n", id, message);
+
+    if (severity == GL_DEBUG_SEVERITY_HIGH)
+    {
+        printf("Error!\n");
+    }
 }
 
 void GLFWFrambufferSizeCallback(GLFWwindow* window, int width, int height)
@@ -784,7 +789,7 @@ int main(int argv, char** argc)
         Ptex::MetaDataType metaData;
         const char* name;
         meta->getKey(i, name, metaData);
-        printf("%zu %s: %s\n", i, name, metadataTypeString[metaData]);    
+        printf("%zu %s: %s\n", i, name, metadataTypeString[metaData]);
     }
 
     g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ PtexFilter::FilterType::f_bilinear, false, 0, false });
@@ -985,7 +990,7 @@ int main(int argv, char** argc)
     gl_ptex_data gl_ptex_data;
     {
         gl_ptex_textures ptex_textures = extract_textures(g_ptex_texture);
-        gl_ptex_data = create_gl_texture_arrays(ptex_textures, GL_NEAREST, GL_NEAREST);
+        gl_ptex_data = create_gl_texture_arrays(ptex_textures, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
     }
     
     mesh_t* mesh = load_obj("models/susanne.obj");
@@ -1058,7 +1063,8 @@ int main(int argv, char** argc)
         glUniformBlockBinding(ptex_program, blockIndex, 0);
 
         blockIndex = glGetUniformBlockIndex(ptex_output_program, "FaceDataUniform");
-        glUniformBlockBinding(ptex_output_program, blockIndex, 0);
+        if (blockIndex != -1)
+            glUniformBlockBinding(ptex_output_program, blockIndex, 0);
     }
     
     GLuint cpu_stream_program = compile_shader("cpu_stream_program", "shaders/fullscreen.vert", "shaders/fullscreen.frag");

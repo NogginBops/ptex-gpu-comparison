@@ -95,16 +95,20 @@ gl_ptex_textures extract_textures(Ptex::PtexTexture* tex) {
 			res_tex = &res_textures.back();
 		}
 
-		int neighbor0 = face_info.adjface(0);
-		int neighbor1 = face_info.adjface(1);
-		int neighbor2 = face_info.adjface(2);
-		int neighbor3 = face_info.adjface(3);
+		int neighbors[4];
+		int edges[4];
+		for (int i = 0; i < 4; i++)
+		{
+			neighbors[i] = face_info.adjface(i);
+			edges[i] = face_info.adjedge(i);
+		}
 
-		res_tex->textures.push_back({ 
-			i, // face_id
-			neighbor0,neighbor1,neighbor2,neighbor3, // neightbors
-			rgba_data // data
-			});
+		ptex_face_texture face_tex;
+		face_tex.face_id = i;
+		memcpy(face_tex.neighbors, neighbors, sizeof(face_tex.neighbors));
+		memcpy(face_tex.edges, edges, sizeof(face_tex.edges));
+		face_tex.data = rgba_data;
+		res_tex->textures.push_back(face_tex);
 
 		/*
 		char name[1024];
@@ -189,10 +193,33 @@ gl_ptex_data create_gl_texture_arrays(gl_ptex_textures textures, GLenum mag_filt
 			assert(i < UINT16_MAX);
 			assert(j < UINT16_MAX);
 
+			ptex_face_texture* texture = &res_textures->textures[j];
+			uint16_t neighbor0 = texture->neighbors[0];
+			uint16_t neighbor1 = texture->neighbors[1];
+			uint16_t neighbor2 = texture->neighbors[2];
+			uint16_t neighbor3 = texture->neighbors[3];
+
+			uint8_t n0_transform = 0 << 2 | texture->edges[0];
+			uint8_t n1_transform = 1 << 2 | texture->edges[1];
+			uint8_t n2_transform = 2 << 2 | texture->edges[2];
+			uint8_t n3_transform = 3 << 2 | texture->edges[3];
+
+			// texIndex, texSilce
+			/*printf("alignof(TexIndex) = %zd, sizeof(TexIndex) = %zd\n", alignof(TexIndex), sizeof(TexIndex));
+			printf("offsetof(TexIndex.texIndex) = %zd\n", offsetof(TexIndex, texIndex));
+			printf("offsetof(TexIndex.texSilced) = %zd\n", offsetof(TexIndex, texSilce));
+			printf("offsetof(TexIndex.neighborIndexes) = %zd\n", offsetof(TexIndex, neighborIndexes));
+			printf("offsetof(TexIndex.neighborTransforms) = %zd\n", offsetof(TexIndex, neighborTransforms));
+
+			if (res_textures->textures[j].face_id == 0)
+			{
+				printf("\n");
+			}*/
+
 			face_indices[res_textures->textures[j].face_id] = { 
 				(uint16_t)i, (uint16_t)j,
-				0,0,0,0, // neihgbor indices
-				0,0,0,0, // neighbor transforms
+				neighbor0,neighbor1,neighbor2,neighbor3, // neihgbor indices
+				n0_transform, n1_transform, n2_transform, n3_transform, // neighbor transforms
 			};
 			//face_indices->add({ (uint16_t)i, (uint16_t)j });
 
@@ -201,14 +228,14 @@ gl_ptex_data create_gl_texture_arrays(gl_ptex_textures textures, GLenum mag_filt
 
 		glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
 
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 
 		vec4_t border = { 0, 0, 0, 0 };
-		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, (float*)&border);
+		glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, (float*)&border);
 
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mag_filter);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, min_filter);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, mag_filter);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, min_filter);
 	}
 
 	array_t<array_texture_t>* array_textures = new array_t<array_texture_t>(textures.num_resolutions);
@@ -245,7 +272,7 @@ gl_ptex_data create_gl_texture_arrays(gl_ptex_textures textures, GLenum mag_filt
 		glObjectLabel(GL_BUFFER, face_data_buffer, -1, "UBO: PTex");
 	}
 
-	glBufferData(GL_UNIFORM_BUFFER, textures.num_faces * sizeof(face_indices[0]), face_indices, GL_STATIC_DRAW);
+	glBufferData(GL_UNIFORM_BUFFER, textures.num_faces * sizeof(TexIndex), face_indices, GL_STATIC_DRAW);
 
 	glBindBuffer(GL_UNIFORM_BUFFER, 0);
 

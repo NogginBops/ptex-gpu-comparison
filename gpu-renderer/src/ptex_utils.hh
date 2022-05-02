@@ -10,6 +10,7 @@
 typedef struct {
 	int face_id;
 	int neighbors[4];
+	int edges[4];
 	void* data;
 } ptex_face_texture;
 
@@ -35,7 +36,7 @@ typedef struct {
 typedef struct {
 	uint16_t texIndex, texSilce;
 	uint16_t neighborIndexes[4];
-	uint16_t neighborTransforms[4];
+	uint8_t neighborTransforms[4];
 } TexIndex;
 
 typedef struct {
