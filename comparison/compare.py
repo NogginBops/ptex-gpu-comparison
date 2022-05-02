@@ -8,6 +8,9 @@ from os import listdir
 from os.path import isfile, join
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
+from skimage import color
+import numpy as np
+import cv2
 
 
 def psnr(ref, res):
@@ -167,6 +170,7 @@ def output_comparisons(dataframe_latex, outfile):
     write_table(dataframe_latex, outfile)
 
 
+# Partially taken from: https://scikit-image.org/docs/stable/auto_examples/applications/plot_image_comparison.html
 def output_comparison_image(image1, image2, diff_image, outfile):
     fig = plt.figure(figsize=(8, 9))
 
@@ -179,7 +183,7 @@ def output_comparison_image(image1, image2, diff_image, outfile):
     ax0.set_title('Image 1')
     ax1.imshow(image2, cmap=plt.cm.gray)
     ax1.set_title('Image 2')
-    ax2.imshow(diff_image, cmap=plt.cm.viridis)
+    ax2.imshow(diff_image, cmap=plt.cm.viridis, vmin=0.0, vmax=0.8)
     ax2.set_title('Diff comparison')
     for a in (ax0, ax1, ax2):
         a.axis('off')
@@ -189,11 +193,63 @@ def output_comparison_image(image1, image2, diff_image, outfile):
     print("Output saved in", outfile)
 
 
-def generate_comparison_image(image1_name, image2_name, outfile="out.png"):
+# Taken from: https://stackoverflow.com/questions/56183201/detect-and-visualize-differences-between-two-images-with-opencv-python
+def ssim_diff(image1, image2):
+    image1_gray = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
+    image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
+
+    (score, diff) = metrics.structural_similarity(image1_gray, image2_gray, full=True)
+    print("Image similarity", score)
+
+    diff = (diff * 255).astype("uint8")
+
+    thresh = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+    contours = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = contours[0] if len(contours) == 2 else contours[1]
+
+    mask = np.zeros(image1.shape, dtype='uint8')
+    filled_after = image2.copy()
+
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area > 40:
+            x, y, w, h = cv2.boundingRect(c)
+            cv2.rectangle(image1, (x, y), (x + w, y + h), (36, 255, 12), 2)
+            cv2.rectangle(image2, (x, y), (x + w, y + h), (36, 255, 12), 2)
+            cv2.drawContours(mask, [c], 0, (0, 255, 0), -1)
+            cv2.drawContours(filled_after, [c], 0, (0, 255, 0), -1)
+
+    # cv2.imshow('before', image1)
+    # cv2.imshow('after', image2)
+    # cv2.imshow('diff', diff)
+    # cv2.imshow('mask', mask)
+    # cv2.imshow('filled after', filled_after)
+    # cv2.waitKey(0)
+    return filled_after
+
+
+def comparison_image_using_method(image1, image2, comp_method):
+    if comp_method == "diff":
+        return util.compare_images(image1, image2, method="diff")
+    elif comp_method == "blend":
+        return util.compare_images(image1, image2, method="blend")
+    elif comp_method == "checkerboard":
+        return util.compare_images(image1, image2, method="checkerboard")
+    elif comp_method == "graypixeldiff":
+        gray_image1 = color.rgb2gray(image1)
+        gray_image2 = color.rgb2gray(image2)
+        return util.compare_images(gray_image1, gray_image2, method="diff")
+    elif comp_method == "ssim":
+        return ssim_diff(image1, image2)
+    else:
+        return util.compare_images(image1, image2, method="diff")
+
+
+def generate_comparison_image(image1_name, image2_name, comp_method, outfile="out.png"):
     image1 = read_image(image1_name)
     image2 = read_image(image2_name)
 
-    diff_image = util.compare_images(image1, image2, method="diff")
+    diff_image = comparison_image_using_method(image1, image2, comp_method)
 
     output_comparison_image(image1, image2, diff_image, outfile)
 
@@ -212,7 +268,7 @@ def generate_comparison_table(metrics_names, ref_renders_names, gpus_renders_nam
 
 
 def parser_generate_comparison_image(image_args):
-    generate_comparison_image(image_args.image1, image_args.image2, image_args.outfile)
+    generate_comparison_image(image_args.image1, image_args.image2, image_args.method, image_args.outfile)
 
 
 def parser_generate_comparison_table(table_args):
@@ -287,6 +343,15 @@ def init_image_subparser(imageparser):
         nargs="?",
         type=str,
         help="Comparison image 2"
+    )
+    imageparser.add_argument(
+        "-m",
+        "--method",
+        nargs="?",
+        type=str,
+        choices=["ssim", "pixeldiff", "graypixeldiff", "blend", "checkerboard"],
+        default="pixeldiff",
+        help="Method of creating comparison image"
     )
     imageparser.add_argument(
         "-o",
