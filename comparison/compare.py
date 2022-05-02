@@ -42,7 +42,7 @@ def load_images(ref_renders_names, gpus_renders_names):
 
 
 def comp_metrics_res(ref_img, res_img, comp_metrics):
-    return [comp_metric(ref_img, res_img) for _, comp_metric, _ in comp_metrics]
+    return [comp_metric(ref_img, res_img) for _, comp_metric in comp_metrics.items()]
 
 
 def ref_gpu_res(comp_metrics, img_pairs):
@@ -68,7 +68,7 @@ def gen_gpu_names(num_gpus):
 
 
 def get_dataframe_parameters(comp_metrics, num_gpus):
-    metric_names = [name for _, _, name in comp_metrics]
+    metric_names = [name.upper() for name in comp_metrics]
     implementation_names = gen_gpu_names(num_gpus)
     levels_names = ['Implementation', 'Scene']
 
@@ -90,12 +90,12 @@ def gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names):
     return combine_res_dataframes(dataframes, comp_metrics, len(gpus_images))
 
 
-def gpus_metric_averages(dataframe):
+def metrics_avg_dataframe(dataframe):
     return dataframe.groupby(level='Implementation').mean()
 
 
-def gpus_renders_ssim(dataframe):
-    return dataframe["SSIM"].unstack()
+def single_metric_dataframe(dataframe):
+    return dataframe.iloc[:, 0].unstack()
 
 
 def get_latex_table(dataframe):
@@ -112,16 +112,21 @@ def make_latex_table(ref_renders_names, gpus_renders_names, comp_metrics, scenes
 
 
 def keyword_to_dataframe(dataframe, res_type="all"):
-    return {
-        "ssim": gpus_renders_ssim(dataframe),
-        "avg": gpus_metric_averages(dataframe),
-        "all": dataframe
-    }.get(res_type)
+    if res_type == "singlemetric":
+        return single_metric_dataframe(dataframe)
+    elif res_type == "metricsavg":
+        return metrics_avg_dataframe(dataframe)
+    else:
+        return dataframe
 
 
 def write_table(dataframe_latex, outfile):
     with open(outfile, 'w') as file:
         file.write(dataframe_latex)
+
+
+def valid_metrics(metrics_names):
+    return {key: comparison_metrics[key] for key in metrics_names}
 
 
 def valid_scenes_names(scenes_names, ref_renders_names):
@@ -138,12 +143,13 @@ def valid_renders_names(renders_names):
         return renders_names
 
 
-def valid_comp_parameters(scenes_names, ref_renders_names, gpus_renders_names):
+def valid_comp_parameters(metrics_names, scenes_names, ref_renders_names, gpus_renders_names):
+    val_metrics = valid_metrics(metrics_names)
     val_scenes_names = valid_scenes_names(scenes_names, ref_renders_names)
     val_ref_renders_names = valid_renders_names(ref_renders_names)
     val_gpus_renders_names = [valid_renders_names(names) for names in gpus_renders_names]
 
-    return val_scenes_names, val_ref_renders_names, val_gpus_renders_names
+    return val_metrics, val_scenes_names, val_ref_renders_names, val_gpus_renders_names
 
 
 def output_comparisons(dataframe_latex, outfile):
@@ -151,13 +157,14 @@ def output_comparisons(dataframe_latex, outfile):
     write_table(dataframe_latex, outfile)
 
 
-def generate_comparisons(comp_metrics, ref_renders_names, gpus_renders_names, scenes_names, res_type="all",
+def generate_comparisons(metrics_names, ref_renders_names, gpus_renders_names, scenes_names, res_type="all",
                          outfile="out.tex"):
-    scenes_names, ref_renders_names, gpus_renders_names = valid_comp_parameters(scenes_names,
-                                                                                ref_renders_names,
-                                                                                gpus_renders_names)
+    selected_metrics, scenes_names, ref_renders_names, gpus_renders_names = valid_comp_parameters(metrics_names,
+                                                                                                  scenes_names,
+                                                                                                  ref_renders_names,
+                                                                                                  gpus_renders_names)
 
-    dataframe_latex = make_latex_table(ref_renders_names, gpus_renders_names, comp_metrics, scenes_names, res_type)
+    dataframe_latex = make_latex_table(ref_renders_names, gpus_renders_names, selected_metrics, scenes_names, res_type)
 
     output_comparisons(dataframe_latex, outfile)
 
@@ -189,13 +196,13 @@ def parse_args():
         help="Names of the scenes"
     )
     cli.add_argument(
-        "-t",
-        "--type",
+        "-v",
+        "--view",
         nargs="?",
         type=str,
         default="all",
-        choices=["ssim", "all", "avg"],
-        help="What data to output."
+        choices=["singlemetric", "all", "metricsavg"],
+        help="What data to output"
     )
     cli.add_argument(
         "-o",
@@ -205,16 +212,25 @@ def parse_args():
         default="out.tex",
         help="File to output latex table to"
     )
+    cli.add_argument(
+        "-m",
+        "--metrics",
+        nargs="*",
+        type=str,
+        default=["psnr", "mse", "ssim", "nrmse"],
+        help="Metrics to be calculated"
+    )
     return cli.parse_args()
 
 
-comparison_metrics = [["Peak signal-to-noise ratio", psnr, "PSNR"],
-                      ["Mean squared error", mse, "MSE"],
-                      ["Structural similarity index measure", ssim, "SSIM"],
-                      ["Normalized root mean squared error", nrmse, "NRMSE"]
-                      ]
+comparison_metrics = {
+    "psnr": psnr,
+    "mse": mse,
+    "ssim": ssim,
+    "nrmse": nrmse
+}
 
 if __name__ == "__main__":
     comp_metrs = comparison_metrics
     args = parse_args()
-    generate_comparisons(comp_metrs, args.reference, args.gpu, args.names, args.type, args.outfile)
+    generate_comparisons(args.metrics, args.reference, args.gpu, args.names, args.view, args.outfile)
