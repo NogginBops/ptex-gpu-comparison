@@ -35,7 +35,7 @@ vec4 ptexture_single(sampler2DArray tex[32], vec2 uv, uint texIDsliceID)
 
 vec3 ptexture(sampler2DArray texBorder[24], sampler2DArray texClamp[24], vec2 uv, int faceID)
 {
-    FaceData data = face_data[faceID];
+    uint texIDsliceID = face_data[faceID].texIDsliceID;
 
     uint texID = texIDsliceID & 0xFFFFu;
     uint sliceID = texIDsliceID >> 16;
@@ -50,7 +50,7 @@ vec3 ptexture(sampler2DArray texBorder[24], sampler2DArray texClamp[24], vec2 uv
 
 void main()
 {
-    vec3 color = ptexture(aTex, UV, faceID).rgb;
+    vec3 color = ptexture(aTexBorder, aTexClamp, UV, faceID).rgb;
 
     FragColor = vec4(color, 1);
 }

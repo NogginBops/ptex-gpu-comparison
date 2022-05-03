@@ -62,6 +62,37 @@ set(PTEX_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 add_subdirectory(lib/ptex)
 target_link_libraries(${TARGET} Ptex)
 
+######## dear imgui ########
+
+set(IMGUI_SOURCES
+    lib/imgui/imgui.cpp
+    lib/imgui/imgui_demo.cpp
+    lib/imgui/imgui_draw.cpp
+    lib/imgui/imgui_tables.cpp
+    lib/imgui/imgui_widgets.cpp
+)
+
+set(IMGUI_HEADERS
+    lib/imgui/imconfig.h
+    lib/imgui/imgui.h
+    lib/imgui/imgui_internal.h
+    lib/imgui/imstb_rectpack.h
+    lib/imgui/imstb_textedit.h
+    lib/imgui/imstb_truetype.h
+)
+
+set(IMGUI_BACKEND
+    lib/imgui/backends/imgui_impl_glfw.h
+    lib/imgui/backends/imgui_impl_glfw.cpp
+
+    lib/imgui/backends/imgui_impl_opengl3.h
+    lib/imgui/backends/imgui_impl_opengl3.cpp
+)
+
+target_include_directories(${TARGET} PUBLIC lib/imgui lib/imgui/backends)
+
+target_sources(${TARGET} PUBLIC ${IMGUI_HEADERS} PRIVATE ${IMGUI_SOURCES} ${IMGUI_BACKEND})
+
 ######## Copy asset folder ########
 
 set(ASSETS_SRC "${CMAKE_SOURCE_DIR}/assets")

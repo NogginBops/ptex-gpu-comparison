@@ -27,6 +27,13 @@
 
 #include "array.hh"
 
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
+
+char* rendering_methods[] = { "cpu", "nvidia", "intel" };
+char* current_rendering_method = rendering_methods[1];
+
 framebuffer_desc g_framebuffer_desc;
 framebuffer_t g_framebuffer;
 
@@ -49,7 +56,7 @@ typedef struct {
     float near_plane;
     float far_plane;
 
-    vec3_t center;
+    vec3_t center, offset;
     float distance, distance_t;
     float x_axis_rot, y_axis_rot;
 
@@ -63,6 +70,9 @@ const float MOUSE_SPEED_Y = -0.01f;
 
 const float ZOOM_SPEED = 0.01f;
 
+const float MOUSE_TRANSLATION_SPEED_X = -0.001f;
+const float MOUSE_TRANSLATION_SPEED_Y = -0.001f;
+
 const float CAMERA_MIN_Y = -85.0f;
 const float CAMERA_MAX_Y = +85.0f;
 
@@ -72,7 +82,9 @@ const float CAMERA_MAX_DIST = 100.0f;
 
 mat4_t calc_view_matrix(camera_t camera) 
 {
-    mat4_t center_offset = mat4_translate(camera.center.x, camera.center.y, camera.center.z);
+    vec3_t center = vec3_add(camera.center, camera.offset);
+
+    mat4_t center_offset = mat4_translate(center.x, center.y, center.z);
     mat4_t offset = mat4_translate(0, 0, camera.distance);
     // FIXME!
     mat4_t transform = mat4_identity();
@@ -94,6 +106,10 @@ void GLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLs
     // Ignore 'Pixel-path performance warning: Pixel transfer is synchronized with 3D rendering.'
     // as we are going to get a lot of those.
     if (id == 131154)
+        return;
+    
+    // Ignore "Buffer detailed info:" messages.
+    if (id == 131185)
         return;
 
     printf("%u: %s\n", id, message);
@@ -135,6 +151,7 @@ void GLFWKeyCallback(GLFWwindow* window, int key, int scancode, int action, int 
 }
 
 bool control_camera = false;
+bool translate_camera = false;
 void GLFWMouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 {
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
@@ -144,6 +161,15 @@ void GLFWMouseButtonCallback(GLFWwindow* window, int button, int action, int mod
     else if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_RELEASE)
     {
         control_camera = false;
+    }
+
+    if (button == GLFW_MOUSE_BUTTON_MIDDLE && action == GLFW_PRESS)
+    {
+        translate_camera = true;
+    }
+    else if (button == GLFW_MOUSE_BUTTON_MIDDLE && action == GLFW_RELEASE)
+    {
+        translate_camera = false;
     }
 }
 
@@ -160,6 +186,17 @@ void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
         g_camera.y_axis_rot += ydiff * MOUSE_SPEED_Y;
 
         g_camera.y_axis_rot = float_clamp(g_camera.y_axis_rot, TO_RADIANS(CAMERA_MIN_Y), TO_RADIANS(CAMERA_MAX_Y));
+    }
+
+    if (translate_camera)
+    {
+        // Get the plane of the current camera
+        mat4_t rot = mat4_from_quat(g_camera.quaternion);
+        
+        vec3_t up = vec3_from_vec4(mat4_mul_vec4(rot, { 0, -1, 0, 0 }));
+        vec3_t right = vec3_from_vec4(mat4_mul_vec4(rot, { 1, 0, 0, 0 }));
+
+        g_camera.offset = vec3_add(g_camera.offset, vec3_add(vec3_mul(up, ydiff * MOUSE_TRANSLATION_SPEED_Y), vec3_mul(right, xdiff * MOUSE_TRANSLATION_SPEED_X)));
     }
 
     const vec3_t x_axis = { 1, 0, 0 };
@@ -845,7 +882,7 @@ int main(int argv, char** argc)
        width / (float)height, // aspect
        0.01f, 1000.0f, // near, far
 
-       { 0, 1, 0 }, // center
+       { 0, 1, 0 }, { 0, 0, 0 }, // center, offset
        float_eerp(CAMERA_MIN_DIST, CAMERA_MAX_DIST, 0.3f), 0.3f, // distance, distance_t
        0, 0,
 
@@ -877,6 +914,10 @@ int main(int argv, char** argc)
         glEnable(GL_DEBUG_OUTPUT);
         glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     }
+
+    ImGuiContext* imctx = ImGui::CreateContext();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init(NULL);
 
     float vertices[] = {
         -0.5f, -0.5f, 0.0f,
@@ -1119,6 +1160,34 @@ int main(int argv, char** argc)
     {
         glfwPollEvents();
 
+        ImGui_ImplGlfw_NewFrame();
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui::NewFrame();
+
+        if (ImGui::Begin("Controls"))
+        {
+            if (ImGui::Button("Take screenshot"))
+            {
+                takeScreenshot = true;
+            }
+
+            if (ImGui::BeginCombo("Ptex method", current_rendering_method))
+            {
+                for (int i = 0; i < ARRAY_SIZE(rendering_methods); i++)
+                {
+                    bool is_selected = current_rendering_method == rendering_methods[i];
+                    if (ImGui::Selectable(rendering_methods[i], is_selected))
+                        current_rendering_method = rendering_methods[i];
+                    if (is_selected)
+                        ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndCombo();
+            }
+        }
+        ImGui::End();
+
+
+
         // Update mvp matrix in programs
         {
             view = calc_view_matrix(g_camera);
@@ -1322,8 +1391,15 @@ int main(int argv, char** argc)
             glEnable(GL_DEPTH_TEST);
         }
 
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
         glfwSwapBuffers(window);
     }
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext(imctx);
 
     g_ptex_filter->release();
     g_ptex_texture->release();
