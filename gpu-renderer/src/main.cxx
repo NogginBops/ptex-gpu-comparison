@@ -1055,7 +1055,9 @@ int main(int argv, char** argc)
     //GLuint outputProgram = compile_shader("shaders/default.vert", "shaders/output.frag");
 
     GLuint ptex_program = compile_shader("ptex_program", "shaders/ptex.vert", "shaders/ptex.frag");
+    GLuint ptex_program_intel = compile_shader("ptex_program", "shaders/ptex.vert", "shaders/ptex_intel.frag");
     GLuint ptex_output_program = compile_shader("ptex_output_program", "shaders/ptex.vert", "shaders/ptex_output.frag");
+
 
     // Setup the uniform block bindings
     {

@@ -2,9 +2,6 @@
 
 in vec2 UV;
 flat in int faceID;
-flat in uint texIDsliceID;
-flat in uint neighbor01Indices;
-flat in uint neighbor23Indices;
 
 out vec4 FragColor;
 
