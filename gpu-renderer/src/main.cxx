@@ -33,6 +33,7 @@
 
 char* rendering_methods[] = { "cpu", "nvidia", "intel" };
 char* current_rendering_method = rendering_methods[1];
+char* prev_rendering_method;
 
 framebuffer_desc g_framebuffer_desc;
 framebuffer_t g_framebuffer;
@@ -96,6 +97,14 @@ mat4_t calc_view_matrix(camera_t camera)
     return mat4_inverse(transform);
 }
 
+void reset_camera(camera_t* camera)
+{
+    camera->offset = { 0 };
+    camera->x_axis_rot = 0;
+    camera->y_axis_rot = 0;
+    camera->quaternion = quat_identity();
+}
+
 void GLFWErrorCallback(int error_code, const char* description)
 {
     printf("%d: %s\n", error_code, description);
@@ -147,6 +156,21 @@ void GLFWKeyCallback(GLFWwindow* window, int key, int scancode, int action, int 
     if (key == GLFW_KEY_C && action == GLFW_PRESS)
     {
         stream_cpu_result = !stream_cpu_result;
+        if (stream_cpu_result)
+        {
+            prev_rendering_method = current_rendering_method;
+            current_rendering_method = rendering_methods[0];
+            assert(strcmp(current_rendering_method, "cpu") == 0);
+        }
+        else
+        {
+            current_rendering_method = prev_rendering_method;
+        }
+    }
+
+    if (key == GLFW_KEY_BACKSPACE && action == GLFW_PRESS)
+    {
+        reset_camera(&g_camera);
     }
 }
 
@@ -196,7 +220,9 @@ void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
         vec3_t up = vec3_from_vec4(mat4_mul_vec4(rot, { 0, -1, 0, 0 }));
         vec3_t right = vec3_from_vec4(mat4_mul_vec4(rot, { 1, 0, 0, 0 }));
 
-        g_camera.offset = vec3_add(g_camera.offset, vec3_add(vec3_mul(up, ydiff * MOUSE_TRANSLATION_SPEED_Y), vec3_mul(right, xdiff * MOUSE_TRANSLATION_SPEED_X)));
+        float speed = float_eerp(0.5f, 150.0f, g_camera.distance_t);
+
+        g_camera.offset = vec3_add(g_camera.offset, vec3_add(vec3_mul(up, ydiff * MOUSE_TRANSLATION_SPEED_Y * speed), vec3_mul(right, xdiff * MOUSE_TRANSLATION_SPEED_X * speed)));
     }
 
     const vec3_t x_axis = { 1, 0, 0 };
@@ -1182,6 +1208,20 @@ int main(int argv, char** argc)
                         ImGui::SetItemDefaultFocus();
                 }
                 ImGui::EndCombo();
+            }
+
+            if (strcmp(current_rendering_method, "cpu") == 0)
+            {
+                stream_cpu_result = true;
+            }
+            else
+            {
+                stream_cpu_result = false;
+            }
+
+            if (ImGui::Button("Reset camera"))
+            {
+                reset_camera(&g_camera);
             }
         }
         ImGui::End();
