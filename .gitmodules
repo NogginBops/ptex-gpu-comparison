@@ -4,3 +4,6 @@
 [submodule "gpu-renderer/lib/ptex"]
 	path = gpu-renderer/lib/ptex
 	url = git@github.com:NogginBops/ptex.git
+[submodule "gpu-renderer/lib/imgui"]
+	path = gpu-renderer/lib/imgui
+	url = git@github.com:ocornut/imgui.git
