@@ -35,11 +35,14 @@ char* rendering_methods[] = { "cpu", "nvidia", "intel" };
 char* current_rendering_method = rendering_methods[1];
 char* prev_rendering_method;
 
-framebuffer_desc g_framebuffer_desc;
-framebuffer_t g_framebuffer;
+framebuffer_desc g_to_cpu_framebuffer_desc;
+framebuffer_t g_to_cpu_framebuffer;
 
-framebuffer_desc g_output_framebuffer_desc;
-framebuffer_t g_output_framebuffer;
+framebuffer_desc g_color_output_framebuffer_desc;
+framebuffer_t g_color_output_framebuffer;
+
+framebuffer_desc g_ms_color_output_framebuffer_desc;
+framebuffer_t g_ms_color_output_framebuffer;
 
 texture_t g_tex_test;
 
@@ -50,6 +53,9 @@ ptex_mesh_t* g_teapot_mesh;
 
 bool stream_cpu_result = false;
 texture_t g_cpu_stream_tex;
+
+sampler_t g_border_sampler;
+sampler_t g_clamp_sampler;
 
 typedef struct {
     float fovy;
@@ -132,8 +138,8 @@ void GLDebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLs
 void GLFWFrambufferSizeCallback(GLFWwindow* window, int width, int height)
 {
     if (width == 0 || height == 0) return;
-    recreate_framebuffer(&g_framebuffer, g_framebuffer_desc, width, height);
-    recreate_framebuffer(&g_output_framebuffer, g_output_framebuffer_desc, width, height);
+    recreate_framebuffer(&g_to_cpu_framebuffer, g_to_cpu_framebuffer_desc, width, height);
+    recreate_framebuffer(&g_color_output_framebuffer, g_color_output_framebuffer_desc, width, height);
     glViewport(0, 0, width, height);
 
     g_camera.aspect = width / (float)height;
@@ -995,17 +1001,18 @@ int main(int argv, char** argc)
         depth_attachment_desc* depth_descriptions = new depth_attachment_desc[1];
         depth_descriptions[0] = depth_desc;
 
-        g_framebuffer_desc = {
+        g_to_cpu_framebuffer_desc = {
             "FBO: to cpu",
             3,
             color_descriptions,
             depth_descriptions,
+            1 // number of samples
         };
 
-        g_framebuffer = create_framebuffer(g_framebuffer_desc, width, height);
+        g_to_cpu_framebuffer = create_framebuffer(g_to_cpu_framebuffer_desc, width, height);
     }
 
-    // setup output buffer
+    // setup color output buffer
     { 
         color_attachment_desc color_desc = {
             "RGB32F: Color",
@@ -1029,14 +1036,50 @@ int main(int argv, char** argc)
         depth_attachment_desc* depth_descriptions = new depth_attachment_desc[1];
         depth_descriptions[0] = depth_desc;
 
-        g_output_framebuffer_desc = {
+        g_color_output_framebuffer_desc = {
             "FBO: Color",
             1,
             color_descriptions,
-            depth_descriptions
+            depth_descriptions,
+            1 // number of samples
         };
 
-        g_output_framebuffer = create_framebuffer(g_output_framebuffer_desc, width, height);
+        g_color_output_framebuffer = create_framebuffer(g_color_output_framebuffer_desc, width, height);
+    }
+
+    // setup multi-sampler color output buffer for intel method
+    {
+        color_attachment_desc color_desc = {
+            "RGB32F_MS: Color",
+            GL_RGB32F,
+            GL_RGB,
+            GL_FLOAT,
+            GL_REPEAT, GL_REPEAT,
+            GL_LINEAR, GL_LINEAR
+        };
+
+        color_attachment_desc* color_descriptions = new color_attachment_desc[1];
+        color_descriptions[0] = color_desc;
+
+        depth_attachment_desc depth_desc = {
+            "DEPTH32F_MS: Depth",
+            GL_DEPTH_COMPONENT32F,
+            GL_REPEAT, GL_REPEAT,
+            GL_LINEAR, GL_LINEAR
+        };
+
+        depth_attachment_desc* depth_descriptions = new depth_attachment_desc[1];
+        depth_descriptions[0] = depth_desc;
+
+        g_ms_color_output_framebuffer_desc = {
+            "FBO: MS Color",
+            1,
+            color_descriptions,
+            depth_descriptions,
+            8 // number of samples
+        };
+
+        g_ms_color_output_framebuffer = create_framebuffer(g_ms_color_output_framebuffer_desc, width, height);
     }
     
     texture_desc tex_test_desc = {
@@ -1058,6 +1101,24 @@ int main(int argv, char** argc)
     {
         gl_ptex_textures ptex_textures = extract_textures(g_ptex_texture);
         gl_ptex_data = create_gl_texture_arrays(ptex_textures, GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
+    }
+
+    {
+        sampler_desc border_desc = {
+            GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER,
+            GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR,
+            { 0, 0, 0, 0 }
+        };
+
+        g_border_sampler = create_sampler("border", border_desc);
+
+        sampler_desc clamp_desc = {
+            GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE,
+            GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR,
+            { 0, 0, 0, 0 }
+        };
+
+        g_clamp_sampler = create_sampler("clamp", clamp_desc);
     }
     
     mesh_t* mesh = load_obj("models/susanne.obj");
@@ -1131,6 +1192,9 @@ int main(int argv, char** argc)
         int blockIndex = glGetUniformBlockIndex(ptex_program, "FaceDataUniform");
         glUniformBlockBinding(ptex_program, blockIndex, 0);
 
+        blockIndex = glGetUniformBlockIndex(ptex_program_intel, "FaceDataUniform");
+        glUniformBlockBinding(ptex_program_intel, blockIndex, 0);
+
         blockIndex = glGetUniformBlockIndex(ptex_output_program, "FaceDataUniform");
         if (blockIndex != -1)
             glUniformBlockBinding(ptex_output_program, blockIndex, 0);
@@ -1139,16 +1203,7 @@ int main(int argv, char** argc)
     GLuint cpu_stream_program = compile_shader("cpu_stream_program", "shaders/fullscreen.vert", "shaders/fullscreen.frag");
 
     mat4_t view = calc_view_matrix(g_camera);
-
-    // FIXME: Setup projection matrix from settings!
-    mat4_t proj =
-    { {
-        {1.73205f, 0, 0, 0},
-        {0, 1.73205f, 0, 0},
-        {0, 0, -1.00002f, -0.200002f},
-        {0, 0, -1, 0}
-    } };
-    proj = mat4_perspective(g_camera.fovy, width / (float)height, 0.01f, 1000.0f);
+    mat4_t proj = mat4_perspective(g_camera.fovy, width / (float)height, 0.01f, 1000.0f);
     
     view = mat4_transpose(view);
     proj = mat4_transpose(proj);
@@ -1162,6 +1217,7 @@ int main(int argv, char** argc)
     mat4_t mvp = mat4_mul_mat4(model, vp);
 
     uniform_mat4(ptex_program, "mvp", &mvp);
+    uniform_mat4(ptex_program_intel, "mvp", &mvp);
     uniform_mat4(ptex_output_program, "mvp", &mvp);
 
     {
@@ -1170,6 +1226,21 @@ int main(int argv, char** argc)
         {
             sprintf(name, "aTex[%d]", i);
             uniform_1i(ptex_program, name, i);
+        }
+    }
+
+    {
+        char name[32];
+        for (int i = 0; i < 24; i++)
+        {
+            sprintf(name, "aTexBorder[%d]", i);
+            uniform_1i(ptex_program_intel, name, i);
+        }
+
+        for (int i = 0; i < 24; i++)
+        {
+            sprintf(name, "aTexClamp[%d]", i);
+            uniform_1i(ptex_program_intel, name, i+24);
         }
     }
 
@@ -1240,6 +1311,7 @@ int main(int argv, char** argc)
             mat4_t mvp = mat4_mul_mat4(model, vp);
 
             uniform_mat4(ptex_program, "mvp", &mvp);
+            uniform_mat4(ptex_program_intel, "mvp", &mvp);
             uniform_mat4(ptex_output_program, "mvp", &mvp);
         }
 
@@ -1254,7 +1326,7 @@ int main(int argv, char** argc)
             int width, height;
             glfwGetFramebufferSize(window, &width, &height);
             
-            glBindFramebuffer(GL_FRAMEBUFFER, g_framebuffer.framebuffer);
+            glBindFramebuffer(GL_FRAMEBUFFER, g_to_cpu_framebuffer.framebuffer);
 
             glReadBuffer(GL_COLOR_ATTACHMENT0);
             void* faceID_buffer = malloc(width * height * sizeof(uint16_t));
@@ -1272,7 +1344,7 @@ int main(int argv, char** argc)
             img_write("test_uv.img", width, height, RGB32F, uv_buffer);
             img_write("test_uv_deriv.img", width, height, RGBA32F, uv_deriv_buffer);
 
-            glBindFramebuffer(GL_FRAMEBUFFER, g_output_framebuffer.framebuffer);
+            glBindFramebuffer(GL_FRAMEBUFFER, g_color_output_framebuffer.framebuffer);
 
             vec3_t* reference_buffer = (vec3_t*)malloc(width * height * 3 * sizeof(float));
             glReadPixels(0, 0, width, height, GL_RGB, GL_FLOAT, reference_buffer);
@@ -1323,10 +1395,10 @@ int main(int argv, char** argc)
             int width, height;
             glfwGetFramebufferSize(window, &width, &height);
 
-            assert(g_framebuffer.width == width);
-            assert(g_framebuffer.height == height);
+            assert(g_to_cpu_framebuffer.width == width);
+            assert(g_to_cpu_framebuffer.height == height);
 
-            glBindFramebuffer(GL_FRAMEBUFFER, g_framebuffer.framebuffer);
+            glBindFramebuffer(GL_FRAMEBUFFER, g_to_cpu_framebuffer.framebuffer);
 
             glReadBuffer(GL_COLOR_ATTACHMENT0);
             void* faceID_buffer = malloc(width * height * sizeof(uint16_t));
@@ -1353,7 +1425,7 @@ int main(int argv, char** argc)
             free(cpu_buffer);
         }
 
-        glBindFramebuffer(GL_FRAMEBUFFER, g_framebuffer.framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, g_to_cpu_framebuffer.framebuffer);
 
         GLenum drawBuffers[] = {
             GL_COLOR_ATTACHMENT0,
@@ -1374,9 +1446,34 @@ int main(int argv, char** argc)
 
         glDrawArrays(GL_TRIANGLES, 0, g_teapot_mesh->num_vertices);
         
-        glBindFramebuffer(GL_FRAMEBUFFER, g_output_framebuffer.framebuffer);
+        framebuffer_t color_output_framebuffer;
+        if (current_rendering_method == rendering_methods[1])
+        {
+            color_output_framebuffer = g_color_output_framebuffer;
+        }
+        else if (current_rendering_method == rendering_methods[2])
+        {
+            color_output_framebuffer = g_ms_color_output_framebuffer;
+        }
+        else if (current_rendering_method == rendering_methods[0]) 
+        {
+            color_output_framebuffer = g_color_output_framebuffer;
+        }
+        else assert(false);
 
-        glUseProgram(ptex_program);
+        glBindFramebuffer(GL_FRAMEBUFFER, color_output_framebuffer.framebuffer);
+
+        assert(strcmp(rendering_methods[1], "nvidia") == 0);
+        assert(strcmp(rendering_methods[2], "intel") == 0);
+        if (current_rendering_method == rendering_methods[1] || current_rendering_method == rendering_methods[0])
+        {
+            glUseProgram(ptex_program);
+        }
+        else if (current_rendering_method == rendering_methods[2])
+        {
+            glUseProgram(ptex_program_intel);
+        }
+        else assert(false);
 
         glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -1384,12 +1481,74 @@ int main(int argv, char** argc)
         //glActiveTexture(GL_TEXTURE0);
         //glBindTexture(GL_TEXTURE_2D, g_tex_test.texture);
         
+        struct TextureBinder {
+            static void BindTextures(::gl_ptex_data gl_ptex_data) {
+                assert(strcmp(rendering_methods[1], "nvidia") == 0);
+                assert(strcmp(rendering_methods[2], "intel") == 0);
+
+                if (current_rendering_method == rendering_methods[1])
+                {
+                    BindTexturesNvidia(gl_ptex_data);
+                }
+                else if (current_rendering_method == rendering_methods[2])
+                {
+                    BindTexturesIntel(gl_ptex_data);
+                }
+            }
+
+            static void UnbindTextures() {
+                assert(strcmp(rendering_methods[1], "nvidia") == 0);
+                assert(strcmp(rendering_methods[2], "intel") == 0);
+
+                if (current_rendering_method == rendering_methods[1] || current_rendering_method == rendering_methods[0])
+                {
+                    for (size_t i = 0; i < 32; i++)
+                    {
+                        glActiveTexture(GL_TEXTURE0 + i);
+                        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+                        glBindSampler(i, 0);
+                    }
+                }
+                else if (current_rendering_method == rendering_methods[2])
+                {
+                    for (size_t i = 0; i < 48; i++)
+                    {
+                        glActiveTexture(GL_TEXTURE0 + i);
+                        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+                        glBindSampler(i, 0);
+                    }
+                }
+                else assert(false);
+            }
+
+            static void BindTexturesNvidia(::gl_ptex_data gl_ptex_data)
+            {
+                for (int i = 0; i < gl_ptex_data.array_textures->size; i++)
+                {
+                    glActiveTexture(GL_TEXTURE0 + i);
+                    glBindTexture(GL_TEXTURE_2D_ARRAY, (*gl_ptex_data.array_textures).arr[i].texture);
+                    glBindSampler(i, g_border_sampler.sampler);
+                }
+            }
+
+            static void BindTexturesIntel(::gl_ptex_data gl_ptex_data)
+            {
+                assert(gl_ptex_data.array_textures->size <= 24);
+                for (int i = 0; i < gl_ptex_data.array_textures->size; i++)
+                {
+                    glActiveTexture(GL_TEXTURE0 + i);
+                    glBindTexture(GL_TEXTURE_2D_ARRAY, (*gl_ptex_data.array_textures).arr[i].texture);
+                    glBindSampler(i, g_border_sampler.sampler);
+
+                    glActiveTexture(GL_TEXTURE0 + i + 24);
+                    glBindTexture(GL_TEXTURE_2D_ARRAY, (*gl_ptex_data.array_textures).arr[i].texture);
+                    glBindSampler(i + 24, g_clamp_sampler.sampler);
+                }
+            }
+        };
+
         // Bind all textures
-        for (int i = 0; i < gl_ptex_data.array_textures->size; i++)
-        {
-            glActiveTexture(GL_TEXTURE0 + i);
-            glBindTexture(GL_TEXTURE_2D_ARRAY, (*gl_ptex_data.array_textures).arr[i].texture);
-        }
+        TextureBinder::BindTextures(gl_ptex_data);
 
         glDrawArrays(GL_TRIANGLES, 0, g_teapot_mesh->num_vertices);
 
@@ -1397,15 +1556,11 @@ int main(int argv, char** argc)
         //glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 
         // unBind all textures
-        for (int i = 0; i < gl_ptex_data.array_textures->size; i++)
-        {
-            glActiveTexture(GL_TEXTURE0 + i);
-            glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-        }
+        TextureBinder::UnbindTextures();
         glActiveTexture(GL_TEXTURE0);
 
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, g_output_framebuffer.framebuffer);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, color_output_framebuffer.framebuffer);
 
         //int width, height;
         //glfwGetFramebufferSize(window, &width, &height);

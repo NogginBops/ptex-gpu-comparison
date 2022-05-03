@@ -83,49 +83,70 @@ GLuint compile_shader(const char* name, const char* vertex_filename, const char*
 }
 
 
-GLuint create_color_attachment_texture(color_attachment_desc desc, int width, int height) {
+GLuint create_color_attachment_texture(color_attachment_desc desc, int width, int height, int samples) {
     GLuint texture;
     glGenTextures(1, &texture);
+    
+    bool multisample = samples > 1;
+    GLenum target = multisample ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
+    glBindTexture(target, texture);
 
     if (has_KHR_debug)
     {
         glObjectLabel(GL_TEXTURE, texture, -1, desc.name);
     }
 
-    glTexImage2D(GL_TEXTURE_2D, 0, desc.internal_format, width, height, 0, desc.format, desc.type, NULL);
+    if (multisample)
+    {
+        glTexImage2DMultisample(target, samples, desc.internal_format, width, height, true);
+    }
+    else
+    {
+        glTexImage2D(target, 0, desc.internal_format, width, height, 0, desc.format, desc.type, NULL);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, desc.warp_s);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, desc.wrap_t);
+        glTexParameteri(target, GL_TEXTURE_WRAP_S, desc.warp_s);
+        glTexParameteri(target, GL_TEXTURE_WRAP_T, desc.wrap_t);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, desc.min_filter);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
+        glTexParameteri(target, GL_TEXTURE_MIN_FILTER, desc.min_filter);
+        glTexParameteri(target, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
+
+    }
 
     return texture;
 }
 
-GLuint create_depth_attachment_texture(depth_attachment_desc desc, int width, int height) {
+GLuint create_depth_attachment_texture(depth_attachment_desc desc, int width, int height, int samples) {
     GLuint texture;
     glGenTextures(1, &texture);
 
+    bool multisample = samples > 1;
+    GLenum target = multisample ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
+    glBindTexture(target, texture);
 
     if (has_KHR_debug)
     {
         glObjectLabel(GL_TEXTURE, texture, -1, desc.name);
     }
 
-    glTexImage2D(GL_TEXTURE_2D, 0, desc.internal_format, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    if (multisample)
+    {
+        glTexImage2DMultisample(target, samples, desc.internal_format, width, height, true);
+    }
+    else
+    {
+        glTexImage2D(target, 0, desc.internal_format, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, desc.warp_s);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, desc.wrap_t);
+        glTexParameteri(target, GL_TEXTURE_WRAP_S, desc.warp_s);
+        glTexParameteri(target, GL_TEXTURE_WRAP_T, desc.wrap_t);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, desc.min_filter);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
-
+        glTexParameteri(target, GL_TEXTURE_MIN_FILTER, desc.min_filter);
+        glTexParameteri(target, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
+    }
+    
     return texture;
 }
 
@@ -135,6 +156,10 @@ framebuffer_t create_framebuffer(framebuffer_desc desc, int width, int height)
 
     framebuffer.width = width;
     framebuffer.height = height;
+
+    framebuffer.samples = desc.samples;
+    bool multisample = desc.samples > 1;
+    GLenum texture_target = multisample ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
 
     glGenFramebuffers(1, &framebuffer.framebuffer);
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
@@ -146,23 +171,47 @@ framebuffer_t create_framebuffer(framebuffer_desc desc, int width, int height)
 
     if (desc.depth_attachment)
     {
-        framebuffer.depth_attachment = create_depth_attachment_texture(*desc.depth_attachment, width, height);
+        framebuffer.depth_attachment = create_depth_attachment_texture(*desc.depth_attachment, width, height, desc.samples);
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, framebuffer.depth_attachment, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, texture_target, framebuffer.depth_attachment, 0);
     }
 
     framebuffer.color_attachments = new GLuint[desc.n_color_attachments];
     framebuffer.n_color_attachments = desc.n_color_attachments;
     for (int i = 0; i < desc.n_color_attachments; i++)
     {
-        framebuffer.color_attachments[i] = create_color_attachment_texture(desc.color_attachments[i], width, height);
+        framebuffer.color_attachments[i] = create_color_attachment_texture(desc.color_attachments[i], width, height, desc.samples);
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, framebuffer.color_attachments[i], 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, texture_target, framebuffer.color_attachments[i], 0);
     }
 
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (status != GL_FRAMEBUFFER_COMPLETE)
     {
+        switch (status)
+        {
+        case GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT:
+            printf("GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT\n");
+            break;
+        case GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER:
+            printf("GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER\n");
+            break;
+        case GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS:
+            printf("GL_FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS\n");
+            break;
+        case GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT:
+            printf("GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT\n");
+            break;
+        case GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE:
+            printf("GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE\n");
+            break;
+        case GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER:
+            printf("GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER\n");
+            break;
+        default:
+            break;
+        }
+
         printf("Framebuffer not complete! Code: %d\n", status);
     }
 
@@ -180,7 +229,7 @@ void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int
 
     if (desc.depth_attachment)
     {
-        framebuffer->depth_attachment = create_depth_attachment_texture(*desc.depth_attachment, width, height);
+        framebuffer->depth_attachment = create_depth_attachment_texture(*desc.depth_attachment, width, height, desc.samples);
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, framebuffer->depth_attachment, 0);
     }
@@ -194,7 +243,7 @@ void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int
     framebuffer->n_color_attachments = desc.n_color_attachments;
     for (int i = 0; i < desc.n_color_attachments; i++)
     {
-        framebuffer->color_attachments[i] = create_color_attachment_texture(desc.color_attachments[i], width, height);
+        framebuffer->color_attachments[i] = create_color_attachment_texture(desc.color_attachments[i], width, height, desc.samples);
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + 1, GL_TEXTURE_2D, framebuffer->color_attachments[i], 0);
     }
@@ -207,6 +256,8 @@ void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int
 
     framebuffer->width = width;
     framebuffer->height = height;
+
+    framebuffer->samples = desc.samples;
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
@@ -246,6 +297,36 @@ GLuint create_vao(const vao_desc* desc, void* vertex_data, int vertex_size, int 
 
     return vao;
 }
+
+sampler_t create_sampler(const char* name, sampler_desc desc) {
+    GLuint sampler;
+    glGenSamplers(1, &sampler);
+
+    glBindSampler(0, sampler);
+    glBindSampler(0, 0);
+
+    if (has_KHR_debug)
+    {
+        char label[256];
+        sprintf(label, "Sampler: %s", name);
+        glObjectLabel(GL_SAMPLER, sampler, -1, label);
+    }
+
+    glSamplerParameterf(sampler, GL_TEXTURE_WRAP_S, desc.wrap_s);
+    glSamplerParameterf(sampler, GL_TEXTURE_WRAP_T, desc.wrap_t);
+
+    glSamplerParameterf(sampler, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
+    glSamplerParameterf(sampler, GL_TEXTURE_MIN_FILTER, desc.min_filter);
+
+    glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, (float*)&desc.border_color);
+
+    sampler_t result;
+    result.sampler = sampler;
+    result.desc = desc;
+
+    return result;
+}
+
 
 void uniform_1i(GLuint program, const char* name, int value)
 {

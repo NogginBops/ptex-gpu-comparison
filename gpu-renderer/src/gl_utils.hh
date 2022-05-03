@@ -29,6 +29,7 @@ typedef struct {
     int n_color_attachments;
     color_attachment_desc* color_attachments;
     depth_attachment_desc* depth_attachment;
+    int samples;
 } framebuffer_desc;
 
 typedef struct {
@@ -37,6 +38,7 @@ typedef struct {
     GLuint* color_attachments;
     GLuint depth_attachment;
     int width, height;
+    int samples;
 } framebuffer_t;
 
 //void check_shader_error(int shader);
@@ -44,8 +46,8 @@ typedef struct {
 GLuint compile_shader_source(const char* name, const char* vertex_name, const char* vertex_source, const char* fragment_name, const char* fragment_source);
 GLuint compile_shader(const char* name, const char* vertex_filename, const char* fragment_filename);
 
-GLuint create_color_attachment_texture(color_attachment_desc desc, int width, int height);
-GLuint create_depth_attachment_texture(depth_attachment_desc desc, int width, int height);
+GLuint create_color_attachment_texture(color_attachment_desc desc, int width, int height, int samples);
+GLuint create_depth_attachment_texture(depth_attachment_desc desc, int width, int height, int samples);
 framebuffer_t create_framebuffer(framebuffer_desc desc, int width, int height);
 void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int width, int height);
 
@@ -93,6 +95,18 @@ typedef struct {
     bool is_sRGB;
 } array_texture_t;
 
+typedef struct {
+    GLenum wrap_s, wrap_t;
+    GLenum mag_filter, min_filter;
+    vec4_t border_color;
+} sampler_desc;
+
+typedef struct {
+    GLuint sampler;
+    sampler_desc desc;
+} sampler_t;
+
+sampler_t create_sampler(const char* name, sampler_desc desc);
 
 void uniform_1i(GLuint program, const char* name, int value);
 void uniform_mat4(GLuint program, const char* name, mat4_t* mat);
