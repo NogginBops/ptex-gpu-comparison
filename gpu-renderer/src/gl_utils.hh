@@ -106,6 +106,12 @@ typedef struct {
     sampler_desc desc;
 } sampler_t;
 
+texture_t create_texture(const char* filepath, texture_desc desc);
+
+texture_t create_empty_texture(texture_desc desc, int width, int height, GLenum internal_format, const char* name);
+
+void update_texture(texture_t* tex, GLenum internal_format, GLenum pixel_format, GLenum pixel_type, int width, int height, void* data);
+
 sampler_t create_sampler(const char* name, sampler_desc desc);
 
 void uniform_1i(GLuint program, const char* name, int value);

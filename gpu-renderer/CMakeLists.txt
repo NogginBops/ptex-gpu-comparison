@@ -15,6 +15,9 @@ set(HEADERS
     src/util.hh
     src/platform.hh
     src/array.hh
+    src/cpu_renderer.hh
+    src/img.hh
+    src/methods/Methods.hh
 )
 
 set(SOURCES 
@@ -26,6 +29,13 @@ set(SOURCES
     src/ptex_utils.cxx
     src/util.cxx
     src/platform.cxx
+    src/cpu_renderer.cxx
+    src/img.cxx
+    src/stb.cxx
+    src/methods/Methods.cxx
+    src/methods/CpuMethod.cxx
+    src/methods/NvidiaMethod.cxx
+    src/methods/IntelMethod.cxx
 )
 
 set(TARGET GpuRenderer)

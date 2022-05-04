@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "util.hh"
+#include <stb_image.h>
 
 bool has_KHR_debug = false;
 
@@ -225,13 +226,16 @@ void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int
     glDeleteTextures(framebuffer->n_color_attachments, framebuffer->color_attachments);
     glDeleteTextures(1, &framebuffer->depth_attachment);
 
+    bool multisample = desc.samples > 1;
+    GLenum texture_target = multisample ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
+
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer->framebuffer);
 
     if (desc.depth_attachment)
     {
         framebuffer->depth_attachment = create_depth_attachment_texture(*desc.depth_attachment, width, height, desc.samples);
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, framebuffer->depth_attachment, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, texture_target, framebuffer->depth_attachment, 0);
     }
 
     if (desc.n_color_attachments != framebuffer->n_color_attachments)
@@ -245,7 +249,7 @@ void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int
     {
         framebuffer->color_attachments[i] = create_color_attachment_texture(desc.color_attachments[i], width, height, desc.samples);
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + 1, GL_TEXTURE_2D, framebuffer->color_attachments[i], 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + 1, texture_target, framebuffer->color_attachments[i], 0);
     }
 
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -296,6 +300,101 @@ GLuint create_vao(const vao_desc* desc, void* vertex_data, int vertex_size, int 
     glBindVertexArray(0);
 
     return vao;
+}
+
+
+texture_t create_texture(const char* filepath, texture_desc desc) {
+    int channels;
+    texture_t tex;
+    stbi_set_flip_vertically_on_load(true);
+    stbi_uc* img = stbi_load(filepath, &tex.width, &tex.height, &channels, 4);
+
+    glGenTextures(1, &tex.texture);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tex.texture);
+
+    if (has_KHR_debug)
+    {
+        glObjectLabel(GL_TEXTURE, tex.texture, -1, filepath);
+    }
+
+    GLenum internal_format = GL_RGBA8;
+    if (desc.is_sRGB) internal_format = GL_SRGB8_ALPHA8;
+
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, tex.width, tex.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img);
+
+    tex.data = img;
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, desc.wrap_s);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, desc.wrap_t);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, desc.min_filter);
+
+    tex.wrap_s = desc.wrap_s;
+    tex.wrap_t = desc.wrap_t;
+
+    tex.mag_filter = desc.mag_filter;
+    tex.min_filter = desc.min_filter;
+
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    return tex;
+}
+
+texture_t create_empty_texture(texture_desc desc, int width, int height, GLenum internal_format, const char* name)
+{
+    int channels;
+    texture_t tex;
+
+    glGenTextures(1, &tex.texture);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tex.texture);
+
+    if (has_KHR_debug)
+    {
+        glObjectLabel(GL_TEXTURE, tex.texture, -1, name);
+    }
+
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+    tex.data = NULL;
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, desc.wrap_s);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, desc.wrap_t);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, desc.min_filter);
+
+    tex.wrap_s = desc.wrap_s;
+    tex.wrap_t = desc.wrap_t;
+
+    tex.mag_filter = desc.mag_filter;
+    tex.min_filter = desc.min_filter;
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    return tex;
+}
+
+void update_texture(texture_t* tex, GLenum internal_format, GLenum pixel_format, GLenum pixel_type, int width, int height, void* data)
+{
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tex->texture);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height, 0, pixel_format, pixel_type, data);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, tex->wrap_s);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, tex->wrap_t);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, tex->mag_filter);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, tex->min_filter);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 sampler_t create_sampler(const char* name, sampler_desc desc) {
