@@ -199,7 +199,15 @@ def ssim_diff(image1, image2):
     image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 
     (score, diff) = metrics.structural_similarity(image1_gray, image2_gray, full=True)
-    print("Image similarity", score)
+
+    return diff
+
+
+def diff_countours(image1, image2):
+    image1_gray = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
+    image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
+
+    (score, diff) = metrics.structural_similarity(image1_gray, image2_gray, full=True)
 
     diff = (diff * 255).astype("uint8")
 
@@ -207,24 +215,11 @@ def ssim_diff(image1, image2):
     contours = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = contours[0] if len(contours) == 2 else contours[1]
 
-    mask = np.zeros(image1.shape, dtype='uint8')
     filled_after = image2.copy()
 
     for c in contours:
-        area = cv2.contourArea(c)
-        if area > 40:
-            x, y, w, h = cv2.boundingRect(c)
-            cv2.rectangle(image1, (x, y), (x + w, y + h), (36, 255, 12), 2)
-            cv2.rectangle(image2, (x, y), (x + w, y + h), (36, 255, 12), 2)
-            cv2.drawContours(mask, [c], 0, (0, 255, 0), -1)
-            cv2.drawContours(filled_after, [c], 0, (0, 255, 0), -1)
+        cv2.drawContours(filled_after, [c], 0, (0, 255, 0), 2)
 
-    # cv2.imshow('before', image1)
-    # cv2.imshow('after', image2)
-    # cv2.imshow('diff', diff)
-    # cv2.imshow('mask', mask)
-    # cv2.imshow('filled after', filled_after)
-    # cv2.waitKey(0)
     return filled_after
 
 
@@ -241,6 +236,8 @@ def comparison_image_using_method(image1, image2, comp_method):
         return util.compare_images(gray_image1, gray_image2, method="diff")
     elif comp_method == "ssim":
         return ssim_diff(image1, image2)
+    elif comp_method == "diffcontour":
+        return diff_countours(image1, image2)
     else:
         return util.compare_images(image1, image2, method="diff")
 
@@ -349,7 +346,7 @@ def init_image_subparser(imageparser):
         "--method",
         nargs="?",
         type=str,
-        choices=["ssim", "pixeldiff", "graypixeldiff", "blend", "checkerboard"],
+        choices=["ssim", "pixeldiff", "graypixeldiff", "blend", "checkerboard", "diffcontour"],
         default="pixeldiff",
         help="Method of creating comparison image"
     )
