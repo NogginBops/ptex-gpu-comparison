@@ -6,11 +6,20 @@ from skimage import util
 # from sklearn import metrics as learnmetrics
 from os import listdir
 from os.path import isfile, join
+import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
+import matplotlib.gridspec as gridspec
 from skimage import color
 import numpy as np
 import cv2
+
+matplotlib.use("pgf")
+matplotlib.rcParams.update({
+    "pgf.texsystem": "pdflatex",
+    'font.family': 'serif',
+    'text.usetex': True,
+    'pgf.rcfonts': False,
+})
 
 
 def psnr(ref, res):
@@ -170,31 +179,79 @@ def output_comparisons(dataframe_latex, outfile):
     write_table(dataframe_latex, outfile)
 
 
+def remove_ticks(plot):
+    plot.tick_params(
+        axis='both',
+        which='both',
+        left=False,
+        right=False,
+        labelleft=False,
+        labelbottom=False,
+        bottom=False
+    )
+
+
+def plot_input_image(image, fig, grid_pos, label):
+    axis = fig.add_subplot(grid_pos)
+
+    axis.imshow(image, cmap=plt.cm.gray)
+    axis.set_title(label)
+
+    remove_ticks(axis)
+
+
+def plot_input_images(image1, image2, fig, grid):
+    plot_input_image(image1, fig, grid[0, 0], "Image 1")
+    plot_input_image(image2, fig, grid[0, 1], "image 2")
+
+
+def plot_diff_images(diff_images, diff_images_names, fig, grid):
+    num_cols = 2
+
+    for i, img in enumerate(diff_images):
+        x = (i % num_cols) * 2
+        y = int(i / num_cols) * 2
+
+        if i == len(diff_images) - 1 and i % 2 == 0:
+            x = num_cols - 1
+
+        comp_plot = fig.add_subplot(grid[y:y + 2, x:x + 2])
+        comp_plot.imshow(img, cmap=plt.cm.viridis, vmin=0.0, vmax=1.0)
+        comp_plot.set_title(diff_images_names[i])
+        remove_ticks(comp_plot)
+
+
 # Partially taken from: https://scikit-image.org/docs/stable/auto_examples/applications/plot_image_comparison.html
-def output_comparison_image(image1, image2, diff_image, outfile):
-    fig = plt.figure(figsize=(8, 9))
+def output_comparison_images(image1, image2, diff_images, diff_images_names, outfile, show_input_images=False):
+    num_cols = 2
+    num_rows = int(np.ceil(len(diff_images) / num_cols))
+    fig_height = 4 * num_rows
+    grid_height = 1
+    diff_gs_start_row = 0
 
-    gs = GridSpec(3, 2)
-    ax0 = fig.add_subplot(gs[0, 0])
-    ax1 = fig.add_subplot(gs[0, 1])
-    ax2 = fig.add_subplot(gs[1:, :])
+    if show_input_images:
+        fig_height += 3
+        grid_height += 1
+        diff_gs_start_row += 1
 
-    ax0.imshow(image1, cmap=plt.cm.gray)
-    ax0.set_title('Image 1')
-    ax1.imshow(image2, cmap=plt.cm.gray)
-    ax1.set_title('Image 2')
-    ax2.imshow(diff_image, cmap=plt.cm.viridis, vmin=0.0, vmax=0.8)
-    ax2.set_title('Diff comparison')
-    for a in (ax0, ax1, ax2):
-        a.axis('off')
-    plt.tight_layout()
-    plt.plot()
+    fig = plt.figure(figsize=(8, fig_height), constrained_layout=True)
+
+    outer_gs = gridspec.GridSpec(3, grid_height, figure=fig)
+
+    if show_input_images:
+        plot_input_images(image1, image2, fig, outer_gs)
+
+    diff_gs = gridspec.GridSpecFromSubplotSpec(num_rows * 2, num_cols * 2, subplot_spec=outer_gs[diff_gs_start_row:, :])
+
+    plot_diff_images(diff_images, diff_images_names, fig, diff_gs)
+
     plt.savefig(outfile)
     print("Output saved in", outfile)
 
 
-# Taken from: https://stackoverflow.com/questions/56183201/detect-and-visualize-differences-between-two-images-with-opencv-python
-def ssim_diff(image1, image2):
+# Taken from:
+# https://stackoverflow.com/questions/56183201/detect-and-visualize-differences-between-two-images-with-opencv-python
+def img_ssim_diff(image1, image2):
     image1_gray = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
     image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 
@@ -203,7 +260,9 @@ def ssim_diff(image1, image2):
     return diff
 
 
-def diff_countours(image1, image2):
+# Taken from:
+# https://stackoverflow.com/questions/56183201/detect-and-visualize-differences-between-two-images-with-opencv-python
+def img_diff_contours(image1, image2):
     image1_gray = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
     image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 
@@ -223,49 +282,60 @@ def diff_countours(image1, image2):
     return filled_after
 
 
-def comparison_image_using_method(image1, image2, comp_method):
-    if comp_method == "diff":
-        return util.compare_images(image1, image2, method="diff")
-    elif comp_method == "blend":
-        return util.compare_images(image1, image2, method="blend")
-    elif comp_method == "checkerboard":
-        return util.compare_images(image1, image2, method="checkerboard")
-    elif comp_method == "graypixeldiff":
-        gray_image1 = color.rgb2gray(image1)
-        gray_image2 = color.rgb2gray(image2)
-        return util.compare_images(gray_image1, gray_image2, method="diff")
-    elif comp_method == "ssim":
-        return ssim_diff(image1, image2)
-    elif comp_method == "diffcontour":
-        return diff_countours(image1, image2)
-    else:
-        return util.compare_images(image1, image2, method="diff")
+def img_gray_pixel_diff(image1, image2):
+    gray_image1 = color.rgb2gray(image1)
+    gray_image2 = color.rgb2gray(image2)
+
+    return util.compare_images(gray_image1, gray_image2, method="diff")
 
 
-def generate_comparison_image(image1_name, image2_name, comp_method, outfile="out.png"):
+def img_pixel_diff(image1, image2):
+    return util.compare_images(image1, image2, method="diff")
+
+
+def img_checkerboard(image1, image2):
+    image1_gray = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
+    image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
+
+    return util.compare_images(image1_gray, image2_gray, method="checkerboard")
+
+
+def img_blend(image1, image2):
+    return util.compare_images(image1, image2, method="blend")
+
+
+def filter_img_methods(methods_names):
+    return {key: img_comp_methods[key] for key in methods_names}
+
+
+def generate_comparison_images(image1_name, image2_name, comp_methods_names, show_input_images, outfile="out.pgf"):
+    comp_methods = filter_img_methods(comp_methods_names)
+
     image1 = read_image(image1_name)
     image2 = read_image(image2_name)
 
-    diff_image = comparison_image_using_method(image1, image2, comp_method)
+    diff_images = [fn(image1, image2) for _, fn in comp_methods.items()]
 
-    output_comparison_image(image1, image2, diff_image, outfile)
+    output_comparison_images(image1, image2, diff_images, list(comp_methods.keys()), outfile, show_input_images)
 
 
 def generate_comparison_table(metrics_names, ref_renders_names, gpus_renders_names, scenes_names, res_type="all",
-                         outfile="out.tex"):
+                              outfile="out.tex"):
     val_metrics_names, val_scenes_names, val_ref_renders_names, val_gpus_renders_names = valid_comp_parameters(
         metrics_names,
         scenes_names,
         ref_renders_names,
         gpus_renders_names)
 
-    dataframe_latex = make_latex_table(val_ref_renders_names, val_gpus_renders_names, val_metrics_names, val_scenes_names, res_type)
+    dataframe_latex = make_latex_table(val_ref_renders_names, val_gpus_renders_names, val_metrics_names,
+                                       val_scenes_names, res_type)
 
     output_comparisons(dataframe_latex, outfile)
 
 
 def parser_generate_comparison_image(image_args):
-    generate_comparison_image(image_args.image1, image_args.image2, image_args.method, image_args.outfile)
+    generate_comparison_images(image_args.image1, image_args.image2, image_args.methods, image_args.showinputimages,
+                               image_args.outfile)
 
 
 def parser_generate_comparison_table(table_args):
@@ -288,7 +358,7 @@ def init_table_subparser(tableparser):
         nargs="+",
         type=str,
         action="append",
-        help="Directory or space-separated list of GPU-rendered PNGs",
+        help="AT LEAST ONE REQUIRED! Directory or space-separated list of GPU-rendered PNGs",
         required=True
     )
     tableparser.add_argument(
@@ -343,20 +413,25 @@ def init_image_subparser(imageparser):
     )
     imageparser.add_argument(
         "-m",
-        "--method",
-        nargs="?",
+        "--methods",
+        nargs="*",
         type=str,
-        choices=["ssim", "pixeldiff", "graypixeldiff", "blend", "checkerboard", "diffcontour"],
-        default="pixeldiff",
-        help="Method of creating comparison image"
+        default=["ssim", "pixeldiff", "graypixeldiff", "blend", "checkerboard", "diffcontours"],
+        help="Methods for comparing the images"
     )
     imageparser.add_argument(
         "-o",
         "--outfile",
         nargs="?",
         type=str,
-        default="out.png",
+        default="out.pgf",
         help="File to output image to"
+    )
+    imageparser.add_argument(
+        "-s",
+        "--showinputimages",
+        action=argparse.BooleanOptionalAction,
+        help="Show input images in generated image"
     )
 
 
@@ -371,6 +446,16 @@ def parse_args():
     init_image_subparser(image_parser)
 
     return cli.parse_args()
+
+
+img_comp_methods = {
+    "pixeldiff": img_pixel_diff,
+    "blend": img_blend,
+    "checkerboard": img_checkerboard,
+    "graypixeldiff": img_gray_pixel_diff,
+    "ssim": img_ssim_diff,
+    "diffcontours": img_diff_contours
+}
 
 
 comparison_metrics = {
