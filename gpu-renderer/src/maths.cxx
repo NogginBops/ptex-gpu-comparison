@@ -363,6 +363,92 @@ void quat_print(const char *name, quat_t q) {
     printf("    %12f    %12f    %12f    %12f\n", q.x, q.y, q.z, q.w);
 }
 
+/* mat2 related functions */
+
+mat2_t mat2_identity(void) {
+    mat2_t m = { {
+        {1, 0},
+        {0, 1},
+    }};
+    return m;
+}
+
+mat2_t mat2_from_cols(vec2_t c0, vec2_t c1) {
+    mat2_t m;
+    m.m[0][0] = c0.x;
+    m.m[1][0] = c0.y;
+    m.m[0][1] = c1.x;
+    m.m[1][1] = c1.y;
+    return m;
+}
+
+vec2_t mat2_mul_vec2(mat2_t m, vec2_t v) {
+    float product[2];
+    for (int i = 0; i < 2; i++)
+    {
+        float a = m.m[i][0] * v.x;
+        float b = m.m[i][1] * v.y;
+        product[i] = a + b;
+    }
+    return vec2_new(product[0], product[1]);
+}
+
+mat2_t mat2_mul_mat2(mat2_t a, mat2_t b) {
+    mat2_t m = { {{0}} };
+    int i, j, k;
+    for (i = 0; i < 2; i++) {
+        for (j = 0; j < 2; j++) {
+            for (k = 0; k < 2; k++) {
+                m.m[i][j] += a.m[i][k] * b.m[k][j];
+            }
+        }
+    }
+    return m;
+}
+
+float mat2_determinant(mat2_t m) {
+    return (m.m[0][0] * m.m[1][1]) - (m.m[1][0] * m.m[0][1]);
+}
+
+mat2_t mat2_inverse(mat2_t m) {
+    float inv_det = 1 / mat2_determinant(m);
+
+    mat2_t inv;
+    inv.m[0][0] = m.m[1][1] * inv_det;
+    inv.m[1][0] = -m.m[1][0] * inv_det;
+    inv.m[0][1] = -m.m[0][1] * inv_det;
+    inv.m[1][1] = m.m[0][0] * inv_det;
+
+    return inv;
+}
+
+mat2_t mat2_transpose(mat2_t m) {
+    mat2_t transpose;
+    int i, j;
+    for (i = 0; i < 2; i++) {
+        for (j = 0; j < 2; j++) {
+            transpose.m[i][j] = m.m[j][i];
+        }
+    }
+    return transpose;
+}
+
+mat2_t mat2_inverse_transpose(mat2_t m) {
+    mat2_t inv = mat2_inverse(m);
+    return mat2_transpose(inv);
+}
+
+void mat2_print(const char* name, mat2_t m) {
+    int i, j;
+    printf("mat2 %s =\n", name);
+    for (i = 0; i < 2; i++) {
+        for (j = 0; j < 2; j++) {
+            printf("    %12f", m.m[i][j]);
+        }
+        printf("\n");
+    }
+}
+
 /* mat3 related functions */
 
 mat3_t mat3_identity(void) {

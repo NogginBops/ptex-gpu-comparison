@@ -14,7 +14,7 @@ namespace Methods {
 		cpu_stream_program = compile_shader("cpu_stream_program", "shaders/fullscreen.vert", "shaders/fullscreen.frag");
 
 		texture_desc cpu_stream_tex_desc = {
-			GL_CLAMP, GL_CLAMP,
+			GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE,
 			GL_NEAREST, GL_NEAREST,
 			true
 		};

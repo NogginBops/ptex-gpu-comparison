@@ -9,6 +9,9 @@
 
 extern Ptex::PtexTexture* g_ptex_texture;
 extern Ptex::PtexFilter* g_ptex_filter;
+extern Ptex::PtexFilter::FilterType g_current_filter_type;
+
+extern bool use_cross_derivatives;
 
 rgb8_t* vec3_buffer_to_rgb8(vec3_t* buffer, int width, int height);
 

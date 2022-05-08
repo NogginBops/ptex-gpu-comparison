@@ -17,6 +17,7 @@ typedef struct {float x, y;} vec2_t;
 typedef struct {float x, y, z;} vec3_t;
 typedef struct {float x, y, z, w;} vec4_t;
 typedef struct {float x, y, z, w;} quat_t;
+typedef struct {float m[2][2]; } mat2_t;
 typedef struct {float m[3][3];} mat3_t;
 typedef struct {float m[4][4];} mat4_t;
 
@@ -87,6 +88,16 @@ quat_t quat_from_axis_angle(vec3_t axis, float angle);
 quat_t quat_mul_quat(quat_t a, quat_t b);
 quat_t quat_slerp(quat_t a, quat_t b, float t);
 void quat_print(const char *name, quat_t q);
+
+/* mat2 related functions */
+mat2_t mat2_identity(void);
+mat2_t mat2_from_cols(vec2_t c0, vec2_t c1);
+vec2_t mat2_mul_vec2(mat2_t m, vec2_t v);
+mat2_t mat2_mul_mat2(mat2_t a, mat2_t b);
+mat2_t mat2_inverse(mat2_t m);
+mat2_t mat2_transpose(mat2_t m);
+mat2_t mat2_inverse_transpose(mat2_t m);
+void mat2_print(const char* name, mat2_t m);
 
 /* mat3 related functions */
 mat3_t mat3_identity(void);

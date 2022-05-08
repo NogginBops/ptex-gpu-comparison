@@ -45,7 +45,7 @@ namespace Methods {
 
 		sampler_t border_sampler;
 
-		void init(int width, int height, gl_ptex_data data, GLenum mag_filter, GLenum min_filter);
+		void init(int width, int height, gl_ptex_data data, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
 		void render(GLuint vao, int vertex_count, mat4_t mvp, vec3_t bg_color);
 		void resize_buffers(int width, int height);
 	};
@@ -61,7 +61,7 @@ namespace Methods {
 		sampler_t border_sampler;
 		sampler_t clamp_sampler;
 
-		void init(int width, int height, gl_ptex_data data, GLenum mag_filter, GLenum min_filter);
+		void init(int width, int height, gl_ptex_data data, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
 		void render(GLuint vao, int vertex_count, mat4_t mvp, vec3_t bg_color);
 		void resize_buffers(int width, int height);
 	};
@@ -70,5 +70,5 @@ namespace Methods {
 	extern NvidiaMethod nvidia;
 	extern IntelMethod intel;
 
-	void init_methods(int width, int height, Ptex::PtexTexture* texture, Ptex::PtexFilter* filter, GLenum mag_filter, GLenum min_filter);
+	void init_methods(int width, int height, Ptex::PtexTexture* texture, Ptex::PtexFilter* filter, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
 }

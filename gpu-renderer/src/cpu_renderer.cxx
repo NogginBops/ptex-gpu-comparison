@@ -6,6 +6,9 @@
 
 Ptex::PtexTexture* g_ptex_texture;
 Ptex::PtexFilter* g_ptex_filter;
+Ptex::PtexFilter::FilterType g_current_filter_type;
+
+bool use_cross_derivatives = false;
 
 uint8_t convert_float_uint(float f)
 {
@@ -92,8 +95,12 @@ vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3
             vec4_t uv_deriv = uv_deriv_buffer[i];
 
             vec3_t color = { uv.x, uv.y, uv.z };
-
-            //vec3_t tex = sample_texture(&g_tex_test, { uv.x, uv.y }, uv_deriv);
+            
+            if (use_cross_derivatives == false)
+            {
+                uv_deriv.y = 0;
+                uv_deriv.w = 0;
+            }
 
             vec3_t ptex = sample_ptex_texture(g_ptex_texture, g_ptex_filter, id, { uv.x, uv.y }, uv_deriv);
 

@@ -40,7 +40,7 @@ Methods::Methods prev_rendering_method;
 
 texture_t g_tex_test;
 
-ptex_mesh_t* g_teapot_mesh;
+ptex_mesh_t* g_mesh;
 
 typedef struct {
     float fovy;
@@ -136,9 +136,9 @@ void GLFWFrambufferSizeCallback(GLFWwindow* window, int width, int height)
     Methods::nvidia.resize_buffers(width, height);
     Methods::intel.resize_buffers(width, height);
 
-    glViewport(0, 0, width, height);
-
     g_camera.aspect = width / (float)height;
+
+    printf("Resize!\n");
 }
 
 bool takeScreenshot = false;
@@ -386,8 +386,13 @@ int main(int argv, char** argc)
     // or find a better solution for this.
     change_directory("../../../assets");
     
+    g_mesh = load_ptex_mesh("models/ground_plane/ground_plane.obj");
+    //g_mesh = load_ptex_mesh("models/teapot/teapot.obj");
+    //g_mesh = load_ptex_mesh("models/mud_sphere/mud_sphere.obj");
+
     Ptex::String error_str;
-    g_ptex_texture = PtexTexture::open("models/teapot/teapot.ptx", error_str);
+    g_ptex_texture = PtexTexture::open("models/ground_plane/ground_plane.ptx", error_str);
+    //g_ptex_texture = PtexTexture::open("models/teapot/teapot.ptx", error_str);
     //g_ptex_texture = PtexTexture::open("models/mud_sphere/mud_sphere.ptx", error_str);
 
     if (error_str.empty() == false)
@@ -424,7 +429,8 @@ int main(int argv, char** argc)
     }
     */
 
-    g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ PtexFilter::FilterType::f_bilinear, false, 0, false });
+    g_current_filter_type = PtexFilter::FilterType::f_bilinear;
+    g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ g_current_filter_type, false, 0, false });
 
     printf("Hello, world!\n");
 
@@ -442,7 +448,7 @@ int main(int argv, char** argc)
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
     glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(800, 800, "Test title", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1600, 900, "Test title", NULL, NULL);
     if (window == NULL)
     {
         printf("Failed to create GLFW window\n");
@@ -515,7 +521,8 @@ int main(int argv, char** argc)
     Methods::init_methods(
         width, height, 
         g_ptex_texture, g_ptex_filter, 
-        GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR);
+        GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR,
+        16.0f);
 
     ImGuiContext* imctx = ImGui::CreateContext();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -562,9 +569,6 @@ int main(int argv, char** argc)
 
     GLuint ptex_vao;
     {
-        g_teapot_mesh = load_ptex_mesh("models/teapot/teapot.obj");
-        //g_teapot_mesh = load_ptex_mesh("models/mud_sphere/mud_sphere.obj");
-
         attribute_desc* attribs = new attribute_desc[4];
         attribs[0] = {
             "Position", 3, GL_FLOAT, GL_FALSE, offsetof(ptex_vertex_t, position), false,
@@ -585,23 +589,17 @@ int main(int argv, char** argc)
             attribs,
         };
 
-        ptex_vao = create_vao(&vao_desc, g_teapot_mesh->vertices, sizeof(ptex_vertex_t), g_teapot_mesh->num_vertices);
+        ptex_vao = create_vao(&vao_desc, g_mesh->vertices, sizeof(ptex_vertex_t), g_mesh->num_vertices);
 
         delete[] attribs;
     }
 
-    g_camera.center = g_teapot_mesh->center;
+    g_camera.center = g_mesh->center;
 
     //GLuint program = compile_shader("shaders/default.vert", "shaders/default.frag");
     //GLuint outputProgram = compile_shader("shaders/default.vert", "shaders/output.frag");
 
-    GLuint ptex_program_intel = compile_shader("ptex_program", "shaders/ptex.vert", "shaders/ptex_intel.frag");
-
-    // Setup the uniform block bindings
-    {
-        int blockIndex = glGetUniformBlockIndex(ptex_program_intel, "FaceDataUniform");
-        glUniformBlockBinding(ptex_program_intel, blockIndex, 0);
-    }
+    //GLuint ptex_program_intel = compile_shader("ptex_program", "shaders/ptex.vert", "shaders/ptex_intel.frag");
     
     GLuint cpu_stream_program = compile_shader("cpu_stream_program", "shaders/fullscreen.vert", "shaders/fullscreen.frag");
 
@@ -616,25 +614,8 @@ int main(int argv, char** argc)
     mat4_t model = mat4_scale(0.5f, 0.5f, 0.5f);
     model = mat4_scale(1.0f, 1.f, 1.f);
     //model = mat4_scale(0.01f, 0.01f, 0.01f);
-
+    
     mat4_t mvp = mat4_mul_mat4(model, vp);
-
-    uniform_mat4(ptex_program_intel, "mvp", &mvp);
-
-    {
-        char name[32];
-        for (int i = 0; i < 24; i++)
-        {
-            sprintf(name, "aTexBorder[%d]", i);
-            uniform_1i(ptex_program_intel, name, i);
-        }
-
-        for (int i = 0; i < 24; i++)
-        {
-            sprintf(name, "aTexClamp[%d]", i);
-            uniform_1i(ptex_program_intel, name, i+24);
-        }
-    }
 
     glEnable(GL_DEPTH_TEST);
 
@@ -671,6 +652,68 @@ int main(int argv, char** argc)
                 ImGui::EndCombo();
             }
 
+            switch (current_rendering_method)
+            {
+            case Methods::Methods::cpu:
+            {
+                const char* filter_names[] = {
+                    "f_point",
+                    "f_bilinear",
+                    "f_box",
+                    "f_gaussian",
+                    "f_bicubic",
+                    "f_bspline",
+                    "f_catmullrom",
+                    "f_mitchell"
+                };
+
+                if (ImGui::BeginCombo("Filter type", filter_names[g_current_filter_type]))
+                {
+                    for (int i = 0; i < 8; i++)
+                    {
+                        bool is_selected = g_current_filter_type == (PtexFilter::FilterType)i;
+                        if (ImGui::Selectable(filter_names[i], is_selected))
+                        {
+                            g_current_filter_type = (PtexFilter::FilterType)i;
+                            g_ptex_filter->release();
+                            g_ptex_filter = PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ g_current_filter_type, false, 0, false });
+                        }
+
+                        if (is_selected)
+                            ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
+
+                ImGui::Checkbox("Use dv/dx, du/dy", &use_cross_derivatives);
+                break;
+            }
+            case Methods::Methods::nvidia:
+            {
+                int curr_aniso = Methods::nvidia.border_sampler.desc.max_anisotropy;
+                if (ImGui::SliderInt("Max Anisotropy", &curr_aniso, 1, 16))
+                {
+                    glSamplerParameterf(Methods::nvidia.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
+                    Methods::nvidia.border_sampler.desc.max_anisotropy = curr_aniso;
+                }
+                break;
+            }
+            case Methods::Methods::intel:
+            {
+                int curr_aniso = Methods::intel.border_sampler.desc.max_anisotropy;
+                if (ImGui::SliderInt("Max Anisotropy", &curr_aniso, 1, 16))
+                {
+                    glSamplerParameterf(Methods::intel.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
+                    glSamplerParameterf(Methods::intel.clamp_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
+                    Methods::intel.border_sampler.desc.max_anisotropy = curr_aniso;
+                    Methods::intel.clamp_sampler.desc.max_anisotropy = curr_aniso;
+                }
+                break;
+            }
+            default:
+                break;
+            }
+
             if (ImGui::Button("Reset camera"))
             {
                 reset_camera(&g_camera);
@@ -678,184 +721,53 @@ int main(int argv, char** argc)
         }
         ImGui::End();
 
-        
-        // Update mvp matrix in programs
-        {
-            view = calc_view_matrix(g_camera);
-            view = mat4_transpose(view);
-
-            proj = mat4_perspective(g_camera.fovy, g_camera.aspect, g_camera.near_plane, g_camera.far_plane);
-            proj = mat4_transpose(proj);
-
-            mat4_t vp = mat4_mul_mat4(view, proj);
-            mat4_t mvp = mat4_mul_mat4(model, vp);
-
-            const char* pass_name = Methods::method_names[(int)current_rendering_method];
-
-            //Methods::nvidia.render(ptex_vao, g_teapot_mesh->num_vertices, mvp, bg_color);
-            if (has_KHR_debug)
-                glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, pass_name);
-            
-            switch (current_rendering_method)
-            {
-            case Methods::Methods::cpu:
-                Methods::cpu.render(ptex_vao, g_teapot_mesh->num_vertices, mvp, bg_color);
-                break;
-
-            case Methods::Methods::nvidia:
-                Methods::nvidia.render(ptex_vao, g_teapot_mesh->num_vertices, mvp, bg_color);
-                break;
-
-            case Methods::Methods::intel:
-                Methods::intel.render(ptex_vao, g_teapot_mesh->num_vertices, mvp, bg_color);
-                break;
-
-            default:
-                assert(false); break;
-            }
-
-            if (has_KHR_debug)
-                glPopDebugGroup();
-
-            uniform_mat4(ptex_program_intel, "mvp", &mvp);
-        }
-
-#if 0
-        // FIXME: Take the screenshot after rendering this frame?
         if (takeScreenshot)
         {
-            // We need to render out:
-            // FaceID, 
-            // UV
-            // UW1, VW2, UW2, VW2
-
-            int width, height;
-            glfwGetFramebufferSize(window, &width, &height);
-            
-            glBindFramebuffer(GL_FRAMEBUFFER, g_to_cpu_framebuffer.framebuffer);
-
-            glReadBuffer(GL_COLOR_ATTACHMENT0);
-            void* faceID_buffer = malloc(width * height * sizeof(uint16_t));
-            glReadPixels(0, 0, width, height, GL_RED_INTEGER, GL_UNSIGNED_SHORT, faceID_buffer);
-
-            glReadBuffer(GL_COLOR_ATTACHMENT1);
-            void* uv_buffer = malloc(width * height * sizeof(vec3_t));
-            glReadPixels(0, 0, width, height, GL_RGB, GL_FLOAT, uv_buffer);
-
-            glReadBuffer(GL_COLOR_ATTACHMENT2);
-            void* uv_deriv_buffer = malloc(width * height * sizeof(vec4_t));
-            glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT, uv_deriv_buffer);
-
-            img_write("text_faceID.img", width, height, R16UI, faceID_buffer);
-            img_write("test_uv.img", width, height, RGB32F, uv_buffer);
-            img_write("test_uv_deriv.img", width, height, RGBA32F, uv_deriv_buffer);
-
-            glBindFramebuffer(GL_FRAMEBUFFER, g_color_output_framebuffer.framebuffer);
-
-            vec3_t* reference_buffer = (vec3_t*)malloc(width * height * 3 * sizeof(float));
-            glReadPixels(0, 0, width, height, GL_RGB, GL_FLOAT, reference_buffer);
-
-            stbi_flip_vertically_on_write(true);
-            //stbi_write_png("test_ref.png", width, height, 3, reference_buffer, width * 3 * sizeof(uint8_t));
-            img_write("test_ref.img", width, height, RGB32F, reference_buffer);
-
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
-            rgb8_t* reference_rgb8_buffer = vec3_buffer_to_rgb8(reference_buffer, width, height);
-            //rgb8_t* reference_rgb8_buffer = (rgb8_t*)malloc(width * height * 3 * sizeof(uint8_t));
-            //glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, reference_rgb8_buffer);
-
-            vec3_t* cpu_buffer = calculate_image_cpu(width, height, (uint16_t*)faceID_buffer, (vec3_t*)uv_buffer, (vec4_t*)uv_deriv_buffer, bg_color);
-
-            //stbi_write_png("test_cpu.png", width, height, 3, cpu_buffer, width * 3);
-            img_write("test_cpu.img", width, height, RGB32F, cpu_buffer);
-            
-            //vec3_buffer_to_rgb8_check(cpu_buffer, reference_rgb8_buffer, width, height);
-
-            rgb8_t* cpu_rgb8_buffer = vec3_buffer_to_rgb8(cpu_buffer, width, height);
-
-            stbi_write_png("test_ref.png", width, height, 3, reference_rgb8_buffer, width * 3);
-            stbi_write_png("test_cpu.png", width, height, 3, cpu_rgb8_buffer, width * 3);
-
-            if (memcmp(reference_buffer, cpu_buffer, width * height * 3) != 0)
-                printf("Difference!!\n");
-
-            compare_buffers_rgb32f((float*)reference_buffer, (float*)cpu_buffer, width, height);
-            compare_buffers_rgb8((uint8_t*)reference_rgb8_buffer, (uint8_t*)cpu_rgb8_buffer, width, height);
-
-            free(reference_rgb8_buffer);
-            free(cpu_rgb8_buffer);
-
-            free(faceID_buffer);
-            free(uv_buffer);
-            free(uv_deriv_buffer);
-            free(reference_buffer);
-            free(cpu_buffer);
 
             takeScreenshot = false;
         }
-#endif
 
-#if 0
-        if (stream_cpu_result)
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+        glViewport(0, 0, width, height);
+        
+        view = calc_view_matrix(g_camera);
+        view = mat4_transpose(view);
+
+        proj = mat4_perspective(g_camera.fovy, g_camera.aspect, g_camera.near_plane, g_camera.far_plane);
+        proj = mat4_transpose(proj);
+
+        mat4_t vp = mat4_mul_mat4(view, proj);
+        mat4_t mvp = mat4_mul_mat4(model, vp);
+
+        const char* pass_name = Methods::method_names[(int)current_rendering_method];
+
+        //Methods::nvidia.render(ptex_vao, g_teapot_mesh->num_vertices, mvp, bg_color);
+        if (has_KHR_debug)
+            glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, pass_name);
+            
+        switch (current_rendering_method)
         {
-            int width, height;
-            glfwGetFramebufferSize(window, &width, &height);
+        case Methods::Methods::cpu:
+            Methods::cpu.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            break;
 
-            assert(g_to_cpu_framebuffer.width == width);
-            assert(g_to_cpu_framebuffer.height == height);
+        case Methods::Methods::nvidia:
+            Methods::nvidia.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            break;
 
-            glBindFramebuffer(GL_FRAMEBUFFER, g_to_cpu_framebuffer.framebuffer);
+        case Methods::Methods::intel:
+            Methods::intel.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            break;
 
-            glReadBuffer(GL_COLOR_ATTACHMENT0);
-            void* faceID_buffer = malloc(width * height * sizeof(uint16_t));
-            glReadPixels(0, 0, width, height, GL_RED_INTEGER, GL_UNSIGNED_SHORT, faceID_buffer);
-
-            glReadBuffer(GL_COLOR_ATTACHMENT1);
-            void* uv_buffer = malloc(width * height * sizeof(vec3_t));
-            glReadPixels(0, 0, width, height, GL_RGB, GL_FLOAT, uv_buffer);
-
-            glReadBuffer(GL_COLOR_ATTACHMENT2);
-            void* uv_deriv_buffer = malloc(width * height * sizeof(vec4_t));
-            glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT, uv_deriv_buffer);
-
-            vec3_t* cpu_buffer = calculate_image_cpu(width, height, (uint16_t*)faceID_buffer, (vec3_t*)uv_buffer, (vec4_t*)uv_deriv_buffer, bg_color);
-
-            rgb8_t* cpu_rgb8_buffer = vec3_buffer_to_rgb8(cpu_buffer, width, height);
-
-            update_texture(&g_cpu_stream_tex, GL_RGB32F, GL_RGB, GL_FLOAT, width, height, cpu_buffer);
-
-            free(cpu_rgb8_buffer);
-            free(faceID_buffer);
-            free(uv_buffer);
-            free(uv_deriv_buffer);
-            free(cpu_buffer);
+        default:
+            assert(false); break;
         }
-#endif
 
-#if 0
-        glBindFramebuffer(GL_FRAMEBUFFER, g_to_cpu_framebuffer.framebuffer);
-
-        GLenum drawBuffers[] = {
-            GL_COLOR_ATTACHMENT0,
-            GL_COLOR_ATTACHMENT1,
-            GL_COLOR_ATTACHMENT2,
-        };
-        glDrawBuffers(3, drawBuffers);
-
-        uint32_t faceClearValue[] = { 0, 0, 0, 0 };
-        float uvClearValue[] = { 0, 0, 0, 0 };
-        float depthClearValue = 1.0f;
-        glClearBufferuiv(GL_COLOR, 0, faceClearValue);
-        glClearBufferfv(GL_COLOR, 1, uvClearValue);
-        glClearBufferfv(GL_COLOR, 2, uvClearValue);
-        glClearBufferfv(GL_DEPTH, 0, &depthClearValue);
-
-        glUseProgram(ptex_output_program);
-
-        glDrawArrays(GL_TRIANGLES, 0, g_teapot_mesh->num_vertices);
-#endif
+        if (has_KHR_debug)
+            glPopDebugGroup();
 
         framebuffer_t color_output_framebuffer;
         switch (current_rendering_method) {
@@ -872,95 +784,9 @@ int main(int argv, char** argc)
             break;
 
         default:
-            assert(false); break;
+            assert(false);
+            break;
         }
-
-#if 0
-        glBindFramebuffer(GL_FRAMEBUFFER, color_output_framebuffer.framebuffer);
-
-        assert(strcmp(rendering_methods[1], "nvidia") == 0);
-        assert(strcmp(rendering_methods[2], "intel") == 0);
-        if (current_rendering_method == rendering_methods[1] || current_rendering_method == rendering_methods[0])
-        {
-        }
-        else if (current_rendering_method == rendering_methods[2])
-        {
-            glUseProgram(ptex_program_intel);
-        }
-        else assert(false);
-
-        glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-#endif
-
-#if 0
-        struct TextureBinder {
-            static void BindTextures(::gl_ptex_data gl_ptex_data) {
-                assert(strcmp(rendering_methods[1], "nvidia") == 0);
-                assert(strcmp(rendering_methods[2], "intel") == 0);
-
-                if (current_rendering_method == rendering_methods[1])
-                {
-                    
-                }
-                else if (current_rendering_method == rendering_methods[2])
-                {
-                    BindTexturesIntel(gl_ptex_data);
-                }
-            }
-
-            static void UnbindTextures() {
-                assert(strcmp(rendering_methods[1], "nvidia") == 0);
-                assert(strcmp(rendering_methods[2], "intel") == 0);
-
-                if (current_rendering_method == rendering_methods[1] || current_rendering_method == rendering_methods[0])
-                {
-                    for (size_t i = 0; i < 32; i++)
-                    {
-                        glActiveTexture(GL_TEXTURE0 + i);
-                        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-                        glBindSampler(i, 0);
-                    }
-                }
-                else if (current_rendering_method == rendering_methods[2])
-                {
-                    for (size_t i = 0; i < 48; i++)
-                    {
-                        glActiveTexture(GL_TEXTURE0 + i);
-                        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-                        glBindSampler(i, 0);
-                    }
-                }
-                else assert(false);
-            }
-
-            static void BindTexturesIntel(::gl_ptex_data gl_ptex_data)
-            {
-                assert(gl_ptex_data.array_textures->size <= 24);
-                for (int i = 0; i < gl_ptex_data.array_textures->size; i++)
-                {
-                    glActiveTexture(GL_TEXTURE0 + i);
-                    glBindTexture(GL_TEXTURE_2D_ARRAY, (*gl_ptex_data.array_textures).arr[i].texture);
-                    glBindSampler(i, g_border_sampler.sampler);
-
-                    glActiveTexture(GL_TEXTURE0 + i + 24);
-                    glBindTexture(GL_TEXTURE_2D_ARRAY, (*gl_ptex_data.array_textures).arr[i].texture);
-                    glBindSampler(i + 24, g_clamp_sampler.sampler);
-                }
-            }
-        };
-
-        // Bind all textures
-        TextureBinder::BindTextures(gl_ptex_data);
-
-        glDrawArrays(GL_TRIANGLES, 0, g_teapot_mesh->num_vertices);
-
-        //glBindTexture(GL_TEXTURE_2D, 0);
-        //glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-
-        // unBind all textures
-        TextureBinder::UnbindTextures();
-#endif
 
         glActiveTexture(GL_TEXTURE0);
 
@@ -973,31 +799,16 @@ int main(int argv, char** argc)
         glClearColor(bg_color.x, bg_color.y, bg_color.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
-        //glViewport(0, 0, width, height);
+        //printf("width: %d, framebuffer: %d\n", width, color_output_framebuffer.width);
         glBlitFramebuffer(0, 0, color_output_framebuffer.width, color_output_framebuffer.height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-#if 0
-        if (stream_cpu_result)
+        GLenum error;
+        while ((error = glGetError()) != GL_NO_ERROR)
         {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-            glUseProgram(cpu_stream_program);
-            
-            int tex_location = glGetUniformLocation(cpu_stream_program, "tex");
-            glUniform1i(tex_location, 0);
-
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, g_cpu_stream_tex.texture);
-
-            glDisable(GL_DEPTH_TEST);
-            
-            glDrawArrays(GL_TRIANGLES, 0, 3);
-
-            glEnable(GL_DEPTH_TEST);
+            printf("Error: %x", error);
         }
-#endif
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

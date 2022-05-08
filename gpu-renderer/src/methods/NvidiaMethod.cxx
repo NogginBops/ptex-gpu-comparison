@@ -4,7 +4,7 @@
 namespace Methods {
 	NvidiaMethod nvidia;
 
-	void NvidiaMethod::init(int width, int height, gl_ptex_data data, GLenum mag_filter, GLenum min_filter) {
+	void NvidiaMethod::init(int width, int height, gl_ptex_data data, GLenum mag_filter, GLenum min_filter, int max_anisotropy) {
 		ptex_data = data;
 
 		// setup color output buffer
@@ -47,6 +47,7 @@ namespace Methods {
 		sampler_desc border_desc = {
 			GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER,
 			mag_filter, min_filter,
+			max_anisotropy,
 			{ 0, 0, 0, 0 }
 		};
 

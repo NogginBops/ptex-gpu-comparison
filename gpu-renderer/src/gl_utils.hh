@@ -98,6 +98,7 @@ typedef struct {
 typedef struct {
     GLenum wrap_s, wrap_t;
     GLenum mag_filter, min_filter;
+    int max_anisotropy;
     vec4_t border_color;
 } sampler_desc;
 

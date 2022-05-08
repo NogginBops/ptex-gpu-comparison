@@ -223,8 +223,16 @@ framebuffer_t create_framebuffer(framebuffer_desc desc, int width, int height)
 
 void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int width, int height)
 {
+    //glDeleteFramebuffers(1, &framebuffer->framebuffer);
     glDeleteTextures(framebuffer->n_color_attachments, framebuffer->color_attachments);
     glDeleteTextures(1, &framebuffer->depth_attachment);
+
+    //glGenFramebuffers(1, &framebuffer->framebuffer);
+
+    //if (has_KHR_debug)
+    //{
+    //    glObjectLabel(GL_FRAMEBUFFER, framebuffer->framebuffer, -1, desc.name);
+    //}
 
     bool multisample = desc.samples > 1;
     GLenum texture_target = multisample ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D;
@@ -249,7 +257,7 @@ void recreate_framebuffer(framebuffer_t* framebuffer, framebuffer_desc desc, int
     {
         framebuffer->color_attachments[i] = create_color_attachment_texture(desc.color_attachments[i], width, height, desc.samples);
 
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + 1, texture_target, framebuffer->color_attachments[i], 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, texture_target, framebuffer->color_attachments[i], 0);
     }
 
     GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -416,6 +424,8 @@ sampler_t create_sampler(const char* name, sampler_desc desc) {
 
     glSamplerParameterf(sampler, GL_TEXTURE_MAG_FILTER, desc.mag_filter);
     glSamplerParameterf(sampler, GL_TEXTURE_MIN_FILTER, desc.min_filter);
+
+    glSamplerParameterf(sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, desc.max_anisotropy);
 
     glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, (float*)&desc.border_color);
 
