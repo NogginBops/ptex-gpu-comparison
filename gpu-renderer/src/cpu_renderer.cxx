@@ -8,7 +8,7 @@ Ptex::PtexTexture* g_ptex_texture;
 Ptex::PtexFilter* g_ptex_filter;
 Ptex::PtexFilter::FilterType g_current_filter_type;
 
-bool use_cross_derivatives = false;
+bool use_cross_derivatives = true;
 
 uint8_t convert_float_uint(float f)
 {

@@ -35,6 +35,8 @@
 
 #include "methods/Methods.hh"
 
+bool g_show_imgui;
+
 Methods::Methods current_rendering_method = Methods::Methods::nvidia;
 Methods::Methods prev_rendering_method;
 
@@ -159,18 +161,24 @@ void GLFWKeyCallback(GLFWwindow* window, int key, int scancode, int action, int 
     {
         if (current_rendering_method == Methods::Methods::cpu)
         {
-            prev_rendering_method = current_rendering_method;
-            current_rendering_method = Methods::Methods::cpu;
+            current_rendering_method = prev_rendering_method;
         }
         else
         {
-            current_rendering_method = prev_rendering_method;
+            prev_rendering_method = current_rendering_method;
+            current_rendering_method = Methods::Methods::cpu;
+            
         }
     }
 
     if (key == GLFW_KEY_BACKSPACE && action == GLFW_PRESS)
     {
         reset_camera(&g_camera);
+    }
+
+    if (key == GLFW_KEY_I && action == GLFW_PRESS)
+    {
+        g_show_imgui = !g_show_imgui;
     }
 }
 
@@ -448,7 +456,7 @@ int main(int argv, char** argc)
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
     glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(1600, 900, "Test title", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(500, 500, "Test title", NULL, NULL);
     if (window == NULL)
     {
         printf("Failed to create GLFW window\n");
@@ -613,6 +621,7 @@ int main(int argv, char** argc)
 
     mat4_t model = mat4_scale(0.5f, 0.5f, 0.5f);
     model = mat4_scale(1.0f, 1.f, 1.f);
+    model = mat4_mul_mat4(model, mat4_rotate_x(TO_RADIANS(15)));
     //model = mat4_scale(0.01f, 0.01f, 0.01f);
     
     mat4_t mvp = mat4_mul_mat4(model, vp);
@@ -628,99 +637,103 @@ int main(int argv, char** argc)
     {
         glfwPollEvents();
 
-        ImGui_ImplGlfw_NewFrame();
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui::NewFrame();
-
-        if (ImGui::Begin("Controls"))
+        if (g_show_imgui)
         {
-            if (ImGui::Button("Take screenshot"))
-            {
-                takeScreenshot = true;
-            }
+            ImGui_ImplGlfw_NewFrame();
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui::NewFrame();
 
-            if (ImGui::BeginCombo("Ptex method", Methods::method_names[(int)current_rendering_method]))
+            if (ImGui::Begin("Controls"))
             {
-                for (int i = 0; i < (int)Methods::Methods::last; i++)
+                if (ImGui::Button("Take screenshot"))
                 {
-                    bool is_selected = current_rendering_method == (Methods::Methods)i;
-                    if (ImGui::Selectable(Methods::method_names[i], is_selected))
-                        current_rendering_method = (Methods::Methods)i;
-                    if (is_selected)
-                        ImGui::SetItemDefaultFocus();
+                    takeScreenshot = true;
                 }
-                ImGui::EndCombo();
-            }
 
-            switch (current_rendering_method)
-            {
-            case Methods::Methods::cpu:
-            {
-                const char* filter_names[] = {
-                    "f_point",
-                    "f_bilinear",
-                    "f_box",
-                    "f_gaussian",
-                    "f_bicubic",
-                    "f_bspline",
-                    "f_catmullrom",
-                    "f_mitchell"
-                };
-
-                if (ImGui::BeginCombo("Filter type", filter_names[g_current_filter_type]))
+                if (ImGui::BeginCombo("Ptex method", Methods::method_names[(int)current_rendering_method]))
                 {
-                    for (int i = 0; i < 8; i++)
+                    for (int i = 0; i < (int)Methods::Methods::last; i++)
                     {
-                        bool is_selected = g_current_filter_type == (PtexFilter::FilterType)i;
-                        if (ImGui::Selectable(filter_names[i], is_selected))
-                        {
-                            g_current_filter_type = (PtexFilter::FilterType)i;
-                            g_ptex_filter->release();
-                            g_ptex_filter = PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ g_current_filter_type, false, 0, false });
-                        }
-
+                        bool is_selected = current_rendering_method == (Methods::Methods)i;
+                        if (ImGui::Selectable(Methods::method_names[i], is_selected))
+                            current_rendering_method = (Methods::Methods)i;
                         if (is_selected)
                             ImGui::SetItemDefaultFocus();
                     }
                     ImGui::EndCombo();
                 }
 
-                ImGui::Checkbox("Use dv/dx, du/dy", &use_cross_derivatives);
-                break;
-            }
-            case Methods::Methods::nvidia:
-            {
-                int curr_aniso = Methods::nvidia.border_sampler.desc.max_anisotropy;
-                if (ImGui::SliderInt("Max Anisotropy", &curr_aniso, 1, 16))
+                switch (current_rendering_method)
                 {
-                    glSamplerParameterf(Methods::nvidia.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
-                    Methods::nvidia.border_sampler.desc.max_anisotropy = curr_aniso;
-                }
-                break;
-            }
-            case Methods::Methods::intel:
-            {
-                int curr_aniso = Methods::intel.border_sampler.desc.max_anisotropy;
-                if (ImGui::SliderInt("Max Anisotropy", &curr_aniso, 1, 16))
+                case Methods::Methods::cpu:
                 {
-                    glSamplerParameterf(Methods::intel.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
-                    glSamplerParameterf(Methods::intel.clamp_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
-                    Methods::intel.border_sampler.desc.max_anisotropy = curr_aniso;
-                    Methods::intel.clamp_sampler.desc.max_anisotropy = curr_aniso;
+                    const char* filter_names[] = {
+                        "f_point",
+                        "f_bilinear",
+                        "f_box",
+                        "f_gaussian",
+                        "f_bicubic",
+                        "f_bspline",
+                        "f_catmullrom",
+                        "f_mitchell"
+                    };
+
+                    if (ImGui::BeginCombo("Filter type", filter_names[g_current_filter_type]))
+                    {
+                        for (int i = 0; i < 8; i++)
+                        {
+                            bool is_selected = g_current_filter_type == (PtexFilter::FilterType)i;
+                            if (ImGui::Selectable(filter_names[i], is_selected))
+                            {
+                                g_current_filter_type = (PtexFilter::FilterType)i;
+                                g_ptex_filter->release();
+                                g_ptex_filter = PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ g_current_filter_type, false, 0, false });
+                            }
+
+                            if (is_selected)
+                                ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndCombo();
+                    }
+
+                    ImGui::Checkbox("Use dv/dx, du/dy", &use_cross_derivatives);
+                    break;
                 }
-                break;
-            }
-            default:
-                break;
+                case Methods::Methods::nvidia:
+                {
+                    int curr_aniso = Methods::nvidia.border_sampler.desc.max_anisotropy;
+                    if (ImGui::SliderInt("Max Anisotropy", &curr_aniso, 1, 16))
+                    {
+                        glSamplerParameterf(Methods::nvidia.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
+                        Methods::nvidia.border_sampler.desc.max_anisotropy = curr_aniso;
+                    }
+                    break;
+                }
+                case Methods::Methods::intel:
+                {
+                    int curr_aniso = Methods::intel.border_sampler.desc.max_anisotropy;
+                    if (ImGui::SliderInt("Max Anisotropy", &curr_aniso, 1, 16))
+                    {
+                        glSamplerParameterf(Methods::intel.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
+                        glSamplerParameterf(Methods::intel.clamp_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
+                        Methods::intel.border_sampler.desc.max_anisotropy = curr_aniso;
+                        Methods::intel.clamp_sampler.desc.max_anisotropy = curr_aniso;
+                    }
+                    break;
+                }
+                default:
+                    break;
+                }
+
+                if (ImGui::Button("Reset camera"))
+                {
+                    reset_camera(&g_camera);
+                }
             }
 
-            if (ImGui::Button("Reset camera"))
-            {
-                reset_camera(&g_camera);
-            }
+            ImGui::End();
         }
-        ImGui::End();
-
+        
         if (takeScreenshot)
         {
 
@@ -810,9 +823,12 @@ int main(int argv, char** argc)
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
+        if (g_show_imgui)
+        {
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
+        
         glfwSwapBuffers(window);
     }
 
