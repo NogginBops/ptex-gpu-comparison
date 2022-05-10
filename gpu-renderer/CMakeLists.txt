@@ -18,6 +18,7 @@ set(HEADERS
     src/cpu_renderer.hh
     src/img.hh
     src/methods/Methods.hh
+    src/profiler.hh
 )
 
 set(SOURCES 
@@ -36,6 +37,7 @@ set(SOURCES
     src/methods/CpuMethod.cxx
     src/methods/NvidiaMethod.cxx
     src/methods/IntelMethod.cxx
+    src/profiler.cxx
 )
 
 set(TARGET GpuRenderer)

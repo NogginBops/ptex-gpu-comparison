@@ -163,7 +163,9 @@ namespace Methods {
 			rgb8_t* cpu_rgb8_buffer = vec3_buffer_to_rgb8(cpu_buffer, width, height);
 
 			update_texture(&cpu_stream_texture, GL_RGB32F, GL_RGB, GL_FLOAT, width, height, cpu_buffer);
-
+			
+			free(cpu_rgb8_buffer);
+			free(cpu_buffer);
 			free(faceID_buffer);
 			free(uv_buffer);
 			free(uv_deriv_buffer);

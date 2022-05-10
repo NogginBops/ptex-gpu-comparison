@@ -35,6 +35,8 @@
 
 #include "methods/Methods.hh"
 
+#include "profiler.hh"
+
 bool g_show_imgui;
 
 Methods::Methods current_rendering_method = Methods::Methods::nvidia;
@@ -635,6 +637,9 @@ int main(int argv, char** argc)
 
     while (glfwWindowShouldClose(window) == false)
     {
+        profiler::new_frame();
+        profiler::push_span("Frame", 0);
+
         glfwPollEvents();
 
         if (g_show_imgui)
@@ -719,6 +724,16 @@ int main(int argv, char** argc)
                         Methods::intel.border_sampler.desc.max_anisotropy = curr_aniso;
                         Methods::intel.clamp_sampler.desc.max_anisotropy = curr_aniso;
                     }
+
+                    if (ImGui::SliderInt("MSAA", &Methods::intel.ms_color_framebuffer_desc.samples, 1, 16))
+                    {
+                        // Recreate the framebuffer with the new number of samples
+                        recreate_framebuffer(
+                            &Methods::intel.ms_color_framebuffer, 
+                            Methods::intel.ms_color_framebuffer_desc,
+                            Methods::intel.ms_color_framebuffer.width, 
+                            Methods::intel.ms_color_framebuffer.height);
+                    }
                     break;
                 }
                 default:
@@ -730,6 +745,8 @@ int main(int argv, char** argc)
                     reset_camera(&g_camera);
                 }
             }
+
+            profiler::show_profiler();
 
             ImGui::End();
         }
@@ -760,7 +777,9 @@ int main(int argv, char** argc)
         //Methods::nvidia.render(ptex_vao, g_teapot_mesh->num_vertices, mvp, bg_color);
         if (has_KHR_debug)
             glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, pass_name);
-            
+        
+        profiler::push_span("method", 1);
+
         switch (current_rendering_method)
         {
         case Methods::Methods::cpu:
@@ -778,6 +797,8 @@ int main(int argv, char** argc)
         default:
             assert(false); break;
         }
+
+        profiler::pop_span(1); // pop "method"
 
         if (has_KHR_debug)
             glPopDebugGroup();
@@ -829,6 +850,8 @@ int main(int argv, char** argc)
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
         
+        profiler::pop_span(0); // pop "Frame"
+
         glfwSwapBuffers(window);
     }
 

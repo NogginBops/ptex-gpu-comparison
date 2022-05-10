@@ -450,3 +450,72 @@ void uniform_mat4(GLuint program, const char* name, mat4_t* mat)
     GLint location = glGetUniformLocation(program, name);
     glUniformMatrix4fv(location, 1, GL_FALSE, (GLfloat*)mat);
 }
+
+
+buffered_query_t create_query(const char* name)
+{
+    buffered_query_t query;
+    query.name = name;
+    query.current_query = 0;
+    query.read_query = 0;
+
+    glGenQueries(QUERY_BUFFER_SIZE, (GLuint*)&query.start_queries);
+    glGenQueries(QUERY_BUFFER_SIZE, (GLuint*)&query.end_queries);
+
+    if (has_KHR_debug)
+    {
+        char label[256];
+        for (int i = 0; i < QUERY_BUFFER_SIZE; i++)
+        {
+            sprintf(label, "%s start query %d", name, i);
+            glQueryCounter(query.start_queries[i], GL_TIMESTAMP);
+            glObjectLabel(GL_QUERY, query.start_queries[i], -1, label);
+        }
+
+        for (int i = 0; i < QUERY_BUFFER_SIZE; i++)
+        {
+            sprintf(label, "%s end query %d", name, i);
+            glQueryCounter(query.end_queries[i], GL_TIMESTAMP);
+            glObjectLabel(GL_QUERY, query.end_queries[i], -1, label);
+        }
+    }
+
+    return query;
+}
+
+void begin_query(buffered_query_t* query) {
+    glQueryCounter(query->start_queries[query->current_query], GL_TIMESTAMP);
+}
+
+void end_query(buffered_query_t* query) {
+    glQueryCounter(query->end_queries[query->current_query], GL_TIMESTAMP);
+
+    query->current_query = (query->current_query + 1) % QUERY_BUFFER_SIZE;
+}
+
+bool is_query_ready(buffered_query_t* query)
+{
+    int last_query = query->end_queries[query->read_query % QUERY_BUFFER_SIZE];
+    int is_available;
+    glGetQueryObjectiv(last_query, GL_QUERY_RESULT_AVAILABLE, &is_available);
+    return is_available == GL_TRUE;
+}
+
+long get_time_elapsed_query_result(buffered_query_t* query, bool wait_if_not_available)
+{
+    int last_start_query = query->start_queries[query->read_query];
+    int last_end_query = query->end_queries[query->read_query];
+
+    GLenum waitOrNot = wait_if_not_available ? GL_QUERY_RESULT : GL_QUERY_NO_WAIT;
+    waitOrNot = GL_QUERY_RESULT;
+
+    GLint64 start_time = 0;
+    GLint64 end_time = 0;
+
+    glGetQueryObjecti64v(last_start_query, waitOrNot, &start_time);
+    glGetQueryObjecti64v(last_end_query, waitOrNot, &end_time);
+
+    query->read_query = (query->read_query + 1) % QUERY_BUFFER_SIZE;
+
+    return end_time - start_time;
+}

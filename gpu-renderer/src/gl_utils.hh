@@ -118,5 +118,24 @@ sampler_t create_sampler(const char* name, sampler_desc desc);
 void uniform_1i(GLuint program, const char* name, int value);
 void uniform_mat4(GLuint program, const char* name, mat4_t* mat);
 
+#define QUERY_BUFFER_SIZE 4
+
+typedef struct {
+    const char* name;
+    GLuint start_queries[QUERY_BUFFER_SIZE];
+    GLuint end_queries[QUERY_BUFFER_SIZE];
+    int current_query;
+    int read_query;
+} buffered_query_t;
+
+buffered_query_t create_query(const char* name);
+
+void begin_query(buffered_query_t* query);
+
+void end_query(buffered_query_t* query);
+
+bool is_query_ready(buffered_query_t* query);
+
+long get_time_elapsed_query_result(buffered_query_t* query, bool wait_if_not_available);
 
 #endif // GL_UTILS_H
