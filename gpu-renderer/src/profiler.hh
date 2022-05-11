@@ -54,11 +54,11 @@ namespace profiler {
 	render_pass_info* create_render_pass(const char* name, int parent_ID, buffered_query_t* query);
 
 	extern tps start_of_frame_timestamp;
-	extern array_t<profile_entry> entries;
-	extern stack_t<int> parent_indices;
+	extern custom_arrays::array_t<profile_entry> entries;
+	extern custom_arrays::stack_t<int> parent_indices;
 
-	extern array_t<render_pass_info*> current_render_passes;
-	extern array_t<render_pass_info*> previous_render_passes;
+	extern custom_arrays::array_t<render_pass_info*> current_render_passes;
+	extern custom_arrays::array_t<render_pass_info*> previous_render_passes;
 
 	void push_span(const char* name, int passID);
 

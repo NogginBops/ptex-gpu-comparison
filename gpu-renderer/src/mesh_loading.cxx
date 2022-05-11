@@ -2,6 +2,7 @@
 #include "mesh_loading.hh"
 
 #define TINYOBJ_LOADER_C_IMPLEMENTATION
+#include <float.h>
 #include <tinyobj_loader_c.h>
 
 #include <stdio.h>

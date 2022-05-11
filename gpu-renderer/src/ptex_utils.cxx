@@ -238,7 +238,7 @@ gl_ptex_data create_gl_texture_arrays(gl_ptex_textures textures, GLenum mag_filt
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, min_filter);
 	}
 
-	array_t<array_texture_t>* array_textures = new array_t<array_texture_t>(textures.num_resolutions);
+	custom_arrays::array_t<array_texture_t>* array_textures = new custom_arrays::array_t<array_texture_t>(textures.num_resolutions);
 
 	for (int i = 0; i < textures.num_resolutions; i++)
 	{
@@ -278,7 +278,7 @@ gl_ptex_data create_gl_texture_arrays(gl_ptex_textures textures, GLenum mag_filt
 
 	gl_ptex_data data;
 	data.array_textures = array_textures;
-	data.face_tex_indices = new array_t<TexIndex>(face_indices, textures.num_faces);
+	data.face_tex_indices = new custom_arrays::array_t<TexIndex>(face_indices, textures.num_faces);
 
 	data.face_data_buffer = face_data_buffer;
 

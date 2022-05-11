@@ -40,8 +40,8 @@ typedef struct {
 } TexIndex;
 
 typedef struct {
-	array_t<array_texture_t>* array_textures;
-	array_t<TexIndex>* face_tex_indices;
+	custom_arrays::array_t<array_texture_t>* array_textures;
+	custom_arrays::array_t<TexIndex>* face_tex_indices;
 
 	GLuint face_data_buffer;
 } gl_ptex_data;
