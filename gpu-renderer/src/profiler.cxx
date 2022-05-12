@@ -45,11 +45,11 @@ namespace profiler {
 	}
 
 	tps start_of_frame_timestamp;
-	array_t<profile_entry> entries(100);
-	stack_t<int> parent_indices(100);
+	custom_arrays::array_t<profile_entry> entries(100);
+	custom_arrays::stack_t<int> parent_indices(100);
 
-	array_t<render_pass_info*> current_render_passes(100);
-	array_t<render_pass_info*> previous_render_passes(100);
+	custom_arrays::array_t<render_pass_info*> current_render_passes(100);
+	custom_arrays::array_t<render_pass_info*> previous_render_passes(100);
 
 	std::unordered_map<int, render_pass_info*> pass_infos = {};
 
@@ -149,7 +149,7 @@ namespace profiler {
 	}
 
 
-	stack_t<int> ids(100);
+	custom_arrays::stack_t<int> ids(100);
 	void show_profiler() {
 
 		if (ImGui::Begin("Profiler"))
