@@ -54,6 +54,10 @@ namespace Methods {
 		framebuffer_desc ms_color_framebuffer_desc;
 		framebuffer_t ms_color_framebuffer;
 
+		// Used when taking screenshots.
+		framebuffer_desc resolve_color_framebuffer_desc;
+		framebuffer_t resolve_color_framebuffer;
+
 		GLuint ptex_program; 
 
 		gl_ptex_data ptex_data;

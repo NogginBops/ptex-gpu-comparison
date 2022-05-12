@@ -149,6 +149,8 @@ bool takeScreenshot = false;
 
 void GLFWKeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
+    if (ImGui::GetIO().WantCaptureKeyboard) return;
+
     if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
     {
         takeScreenshot = true;
@@ -181,6 +183,10 @@ void GLFWKeyCallback(GLFWwindow* window, int key, int scancode, int action, int 
     if (key == GLFW_KEY_I && action == GLFW_PRESS)
     {
         g_show_imgui = !g_show_imgui;
+
+        ImGui::GetIO().WantCaptureKeyboard = false;
+        ImGui::GetIO().WantCaptureMouse = false;
+
     }
 }
 
@@ -188,6 +194,8 @@ bool control_camera = false;
 bool translate_camera = false;
 void GLFWMouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 {
+    if (ImGui::GetIO().WantCaptureMouse) return;
+
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
     {
         control_camera = true;
@@ -209,6 +217,8 @@ void GLFWMouseButtonCallback(GLFWwindow* window, int button, int action, int mod
 
 void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
 {
+    if (ImGui::GetIO().WantCaptureMouse) return;
+
     static double prev_xpos = 0, prev_ypos = 0;
 
     double xdiff = xpos - prev_xpos;
@@ -250,6 +260,8 @@ void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
 
 void GLFWScrollCallback(GLFWwindow* window, double xoffset, double yoffset)
 {
+    if (ImGui::GetIO().WantCaptureMouse) return;
+
     g_camera.distance_t += -yoffset * ZOOM_SPEED;
     g_camera.distance_t = float_clamp(g_camera.distance_t, 0, 1);
 
@@ -388,6 +400,18 @@ void compare_buffers_rgb8(uint8_t* reference, uint8_t* result, int width, int he
     printf("red SME: %g, green SME: %g, blue SME: %g\n", red_sme, green_sme, blue_sme);
     printf("red MAX: %g, green MAX: %g, blue MAX: %g\n", red_max * 255.0f, green_max * 255.0f, blue_max * 255.0f);
     printf("%d different red pixels\n", diffs);
+}
+
+void* download_framebuffer(framebuffer_t* framebuffer, GLenum attachment) {
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer->framebuffer);
+
+    int pixels = framebuffer->width * framebuffer->height;
+
+    glReadBuffer(attachment);
+    void* buffer = malloc(pixels * sizeof(float) * 3);
+    glReadPixels(0, 0, framebuffer->width, framebuffer->height, GL_RGB, GL_FLOAT, buffer);
+
+    return buffer;
 }
 
 int main(int argv, char** argc)
@@ -621,9 +645,16 @@ int main(int argv, char** argc)
 
     mat4_t vp = mat4_mul_mat4(view, proj);
 
+    float scale = 1.0;
+    float angle_x = 0;
+    float angle_y = 0;
+    float angle_z = 0;
+    
     mat4_t model = mat4_scale(0.5f, 0.5f, 0.5f);
-    model = mat4_scale(1.0f, 1.f, 1.f);
-    model = mat4_mul_mat4(model, mat4_rotate_x(TO_RADIANS(15)));
+    model = mat4_scale(scale, scale, scale);
+    model = mat4_mul_mat4(model, mat4_rotate_x(angle_x));
+    model = mat4_mul_mat4(model, mat4_rotate_y(angle_y));
+    model = mat4_mul_mat4(model, mat4_rotate_z(angle_z));
     //model = mat4_scale(0.01f, 0.01f, 0.01f);
     
     mat4_t mvp = mat4_mul_mat4(model, vp);
@@ -654,6 +685,10 @@ int main(int argv, char** argc)
                 {
                     takeScreenshot = true;
                 }
+
+                ImGui::SliderAngle("Angle X", &angle_x);
+                ImGui::SliderAngle("Angle Y", &angle_y);
+                ImGui::SliderAngle("Angle Z", &angle_z);
 
                 if (ImGui::BeginCombo("Ptex method", Methods::method_names[(int)current_rendering_method]))
                 {
@@ -751,10 +786,61 @@ int main(int argv, char** argc)
             ImGui::End();
         }
         
+        view = calc_view_matrix(g_camera);
+        view = mat4_transpose(view);
+
+        proj = mat4_perspective(g_camera.fovy, g_camera.aspect, g_camera.near_plane, g_camera.far_plane);
+        proj = mat4_transpose(proj);
+
+        model = mat4_scale(scale, scale, scale);
+        model = mat4_mul_mat4(model, mat4_rotate_x(angle_x));
+        model = mat4_mul_mat4(model, mat4_rotate_y(angle_y));
+        model = mat4_mul_mat4(model, mat4_rotate_z(angle_z));
+
+        mat4_t vp = mat4_mul_mat4(view, proj);
+        mat4_t mvp = mat4_mul_mat4(model, vp);
+
         if (takeScreenshot)
         {
+            // Render using all methods.
+            Methods::nvidia.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
 
+            Methods::intel.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            // resolve intel MS buffer
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, Methods::intel.ms_color_framebuffer.framebuffer);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Methods::intel.resolve_color_framebuffer.framebuffer);
+            glBlitFramebuffer(
+                0, 0, Methods::intel.ms_color_framebuffer.width, Methods::intel.ms_color_framebuffer.height,
+                0, 0, Methods::intel.resolve_color_framebuffer.width, Methods::intel.ms_color_framebuffer.height,
+                GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
+            Methods::cpu.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+
+            // Then we will download all of the final pictures.
+            // We also need to resolve the intel MS framebuffer.
+            
+            vec3_t* nvidia_data = (vec3_t*)download_framebuffer(&Methods::nvidia.framebuffer, GL_COLOR_ATTACHMENT0);
+            vec3_t* intel_data = (vec3_t*)download_framebuffer(&Methods::intel.resolve_color_framebuffer, GL_COLOR_ATTACHMENT0);
+            vec3_t* cpu_data = (vec3_t*)download_framebuffer(&Methods::cpu.cpu_result_framebuffer, GL_COLOR_ATTACHMENT0);
+
+            stbi_flip_vertically_on_write(true);
+
+            rgb8_t* nvidia_rgb8_data = vec3_buffer_to_rgb8(nvidia_data, Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height);
+            rgb8_t* intel_rgb8_data = vec3_buffer_to_rgb8(intel_data, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height);
+            rgb8_t* cpu_rgb8_data = vec3_buffer_to_rgb8(cpu_data, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height);
+
+            // FIXME: Add scene name to file name...
+            stbi_write_png("nvidia.png", Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height, 3, nvidia_rgb8_data, Methods::nvidia.framebuffer.width * 3);
+            stbi_write_png("intel.png", Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height, 3, intel_rgb8_data, Methods::intel.resolve_color_framebuffer.width * 3);
+            stbi_write_png("cpu.png", Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height, 3, cpu_rgb8_data, Methods::cpu.cpu_result_framebuffer.width * 3);
+
+            free(nvidia_data);
+            free(intel_data);
+            free(cpu_data);
+
+            free(nvidia_rgb8_data);
+            free(intel_rgb8_data);
+            free(cpu_rgb8_data);
 
             takeScreenshot = false;
         }
@@ -763,15 +849,6 @@ int main(int argv, char** argc)
         glfwGetFramebufferSize(window, &width, &height);
         glViewport(0, 0, width, height);
         
-        view = calc_view_matrix(g_camera);
-        view = mat4_transpose(view);
-
-        proj = mat4_perspective(g_camera.fovy, g_camera.aspect, g_camera.near_plane, g_camera.far_plane);
-        proj = mat4_transpose(proj);
-
-        mat4_t vp = mat4_mul_mat4(view, proj);
-        mat4_t mvp = mat4_mul_mat4(model, vp);
-
         const char* pass_name = Methods::method_names[(int)current_rendering_method];
 
         //Methods::nvidia.render(ptex_vao, g_teapot_mesh->num_vertices, mvp, bg_color);

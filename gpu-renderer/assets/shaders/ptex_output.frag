@@ -16,6 +16,8 @@ void main()
 	outUVDeriv.zw = dFdy(UV);
 	//outUVDeriv.xz = outUVDeriv.zx;
 
+	//outUVDeriv.yw = 1 / outUVDeriv.yw; 
+
 	//outUVDeriv.yw = outUVDeriv.wy;
 	//mat2 inv = inverse(mat2(outUVDeriv.xz, outUVDeriv.yw));
 	//outUVDeriv.xz = inv[0];

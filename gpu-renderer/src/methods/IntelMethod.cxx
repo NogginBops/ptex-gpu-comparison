@@ -44,6 +44,41 @@ namespace Methods {
             ms_color_framebuffer = create_framebuffer(ms_color_framebuffer_desc, width, height);
         }
 
+        // setup resolve color output buffer for intel method (used for screenshot)
+        {
+            color_attachment_desc color_desc = {
+                "Attachment: intel_resolve.color (RGB32F)",
+                GL_RGB32F,
+                GL_RGB,
+                GL_FLOAT,
+                GL_REPEAT, GL_REPEAT,
+                GL_LINEAR, GL_LINEAR
+            };
+
+            color_attachment_desc* color_descriptions = new color_attachment_desc[1];
+            color_descriptions[0] = color_desc;
+
+            depth_attachment_desc depth_desc = {
+                "Attachment: intel_resolve.depth (DEPTH32F)",
+                GL_DEPTH_COMPONENT32F,
+                GL_REPEAT, GL_REPEAT,
+                GL_LINEAR, GL_LINEAR
+            };
+
+            depth_attachment_desc* depth_descriptions = new depth_attachment_desc[1];
+            depth_descriptions[0] = depth_desc;
+
+            resolve_color_framebuffer_desc = {
+                "FBO: intel_resolve",
+                1,
+                color_descriptions,
+                depth_descriptions,
+                1 // number of samples
+            };
+
+            resolve_color_framebuffer = create_framebuffer(resolve_color_framebuffer_desc, width, height);
+        }
+
         ptex_program = compile_shader("program: intel_ptex", "shaders/ptex.vert", "shaders/ptex_intel.frag");
 
         {
@@ -120,5 +155,6 @@ namespace Methods {
     void IntelMethod::resize_buffers(int width, int height)
     {
         recreate_framebuffer(&ms_color_framebuffer, ms_color_framebuffer_desc, width, height);
+        recreate_framebuffer(&resolve_color_framebuffer, resolve_color_framebuffer_desc, width, height);
     }
 }
