@@ -139,6 +139,7 @@ void GLFWFrambufferSizeCallback(GLFWwindow* window, int width, int height)
     Methods::cpu.resize_buffers(width, height);
     Methods::nvidia.resize_buffers(width, height);
     Methods::intel.resize_buffers(width, height);
+    Methods::hybrid.resize_buffers(width, height);
 
     g_camera.aspect = width / (float)height;
 
@@ -402,6 +403,11 @@ void compare_buffers_rgb8(uint8_t* reference, uint8_t* result, int width, int he
     printf("%d different red pixels\n", diffs);
 }
 
+vec3_t rgb_to_vec3(int r, int g, int b)
+{
+    return { r / 255.0f, g / 255.0f, b / 255.0f };
+}
+
 void* download_framebuffer(framebuffer_t* framebuffer, GLenum attachment) {
     glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer->framebuffer);
 
@@ -479,10 +485,15 @@ int main(int argv, char** argc)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+#if RELEASE
+    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_FALSE);
+#else
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
+#endif
+    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_FALSE);
     glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(500, 500, "Test title", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(800, 800, "Test title", NULL, NULL);
     if (window == NULL)
     {
         printf("Failed to create GLFW window\n");
@@ -545,9 +556,11 @@ int main(int argv, char** argc)
 
     if (has_KHR_debug)
     {
+#if !(RELEASE)
         glDebugMessageCallback(GLDebugCallback, NULL);
         glEnable(GL_DEBUG_OUTPUT);
         glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+#endif
     }
 
     glDisable(GL_SCISSOR_TEST);
@@ -661,7 +674,7 @@ int main(int argv, char** argc)
 
     glEnable(GL_DEPTH_TEST);
 
-    vec3_t bg_color = { 1.0f, 0.5f, 0.8f };
+    vec3_t bg_color = rgb_to_vec3(100, 149, 237);
 
     glBindVertexArray(vao);
     glBindVertexArray(ptex_vao);
@@ -771,6 +784,28 @@ int main(int argv, char** argc)
                     }
                     break;
                 }
+                case Methods::Methods::hybrid:
+                {
+                    int curr_aniso = Methods::hybrid.border_sampler.desc.max_anisotropy;
+                    if (ImGui::SliderInt("Max Anisotropy", &curr_aniso, 1, 16))
+                    {
+                        glSamplerParameterf(Methods::hybrid.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
+                        glSamplerParameterf(Methods::hybrid.clamp_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
+                        Methods::hybrid.border_sampler.desc.max_anisotropy = curr_aniso;
+                        Methods::hybrid.clamp_sampler.desc.max_anisotropy = curr_aniso;
+                    }
+
+                    if (ImGui::SliderInt("MSAA", &Methods::hybrid.ms_framebuffer_desc.samples, 1, 16))
+                    {
+                        // Recreate the framebuffer with the new number of samples
+                        recreate_framebuffer(
+                            &Methods::hybrid.ms_framebuffer,
+                            Methods::hybrid.ms_framebuffer_desc,
+                            Methods::hybrid.ms_framebuffer.width,
+                            Methods::hybrid.ms_framebuffer.height);
+                    }
+                    break;
+                }
                 default:
                     break;
                 }
@@ -811,7 +846,16 @@ int main(int argv, char** argc)
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Methods::intel.resolve_color_framebuffer.framebuffer);
             glBlitFramebuffer(
                 0, 0, Methods::intel.ms_color_framebuffer.width, Methods::intel.ms_color_framebuffer.height,
-                0, 0, Methods::intel.resolve_color_framebuffer.width, Methods::intel.ms_color_framebuffer.height,
+                0, 0, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height,
+                GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+            Methods::hybrid.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            // resolve hybrid MS buffer
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, Methods::hybrid.ms_framebuffer.framebuffer);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Methods::hybrid.resolve_framebuffer.framebuffer);
+            glBlitFramebuffer(
+                0, 0, Methods::hybrid.ms_framebuffer.width, Methods::hybrid.ms_framebuffer.height,
+                0, 0, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height,
                 GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
             Methods::cpu.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
@@ -821,25 +865,30 @@ int main(int argv, char** argc)
             
             vec3_t* nvidia_data = (vec3_t*)download_framebuffer(&Methods::nvidia.framebuffer, GL_COLOR_ATTACHMENT0);
             vec3_t* intel_data = (vec3_t*)download_framebuffer(&Methods::intel.resolve_color_framebuffer, GL_COLOR_ATTACHMENT0);
+            vec3_t* hybrid_data = (vec3_t*)download_framebuffer(&Methods::hybrid.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
             vec3_t* cpu_data = (vec3_t*)download_framebuffer(&Methods::cpu.cpu_result_framebuffer, GL_COLOR_ATTACHMENT0);
 
             stbi_flip_vertically_on_write(true);
 
             rgb8_t* nvidia_rgb8_data = vec3_buffer_to_rgb8(nvidia_data, Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height);
             rgb8_t* intel_rgb8_data = vec3_buffer_to_rgb8(intel_data, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height);
+            rgb8_t* hybrid_rgb8_data = vec3_buffer_to_rgb8(hybrid_data, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height);
             rgb8_t* cpu_rgb8_data = vec3_buffer_to_rgb8(cpu_data, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height);
 
             // FIXME: Add scene name to file name...
             stbi_write_png("nvidia.png", Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height, 3, nvidia_rgb8_data, Methods::nvidia.framebuffer.width * 3);
             stbi_write_png("intel.png", Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height, 3, intel_rgb8_data, Methods::intel.resolve_color_framebuffer.width * 3);
+            stbi_write_png("hybrid.png", Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height, 3, hybrid_rgb8_data, Methods::hybrid.resolve_framebuffer.width * 3);
             stbi_write_png("cpu.png", Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height, 3, cpu_rgb8_data, Methods::cpu.cpu_result_framebuffer.width * 3);
 
             free(nvidia_data);
             free(intel_data);
+            free(hybrid_data);
             free(cpu_data);
 
             free(nvidia_rgb8_data);
             free(intel_rgb8_data);
+            free(hybrid_rgb8_data);
             free(cpu_rgb8_data);
 
             takeScreenshot = false;
@@ -871,6 +920,10 @@ int main(int argv, char** argc)
             Methods::intel.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
             break;
 
+        case Methods::Methods::hybrid:
+            Methods::hybrid.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            break;
+
         default:
             assert(false); break;
         }
@@ -892,6 +945,10 @@ int main(int argv, char** argc)
 
         case Methods::Methods::intel:
             color_output_framebuffer = Methods::intel.ms_color_framebuffer;
+            break;
+
+        case Methods::Methods::hybrid:
+            color_output_framebuffer = Methods::hybrid.ms_framebuffer;
             break;
 
         default:

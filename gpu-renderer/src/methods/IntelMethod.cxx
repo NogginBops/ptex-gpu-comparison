@@ -111,7 +111,7 @@ namespace Methods {
         };
 
         border_sampler = create_sampler("sampler: intel.border", border_desc);
-        clamp_sampler = create_sampler("sampler: intel.clamp", border_desc);
+        clamp_sampler = create_sampler("sampler: intel.clamp", clamp_desc);
 	}
 
     void IntelMethod::render(GLuint vao, int vertex_count, mat4_t mvp, vec3_t bg_color) {

@@ -42,7 +42,7 @@ namespace Methods {
 			framebuffer = create_framebuffer(framebuffer_desc, width, height);
 		}
 
-		ptex_program = compile_shader("program: nividia_ptex", "shaders/ptex.vert", "shaders/ptex.frag");
+		ptex_program = compile_shader("program: nvidia_ptex", "shaders/ptex.vert", "shaders/ptex_nvidia.frag");
 
 		sampler_desc border_desc = {
 			GL_CLAMP_TO_BORDER, GL_CLAMP_TO_BORDER,

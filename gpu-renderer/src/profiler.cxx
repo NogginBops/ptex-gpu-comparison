@@ -127,23 +127,27 @@ namespace profiler {
 		{
 			auto last = previous_render_passes[previous_render_passes.size - 1];
 
-			tps start = chclock::now();
-			while (is_query_ready(last->query) == false)
+			// We only read the query if it's ready or if we have to read the query.
+			if (is_query_ready(last->query) == true || (last->query->current_query + 1) % QUERY_BUFFER_SIZE == last->query->read_query)
 			{
+				tps start = chclock::now();
+				while (is_query_ready(last->query) == false)
+				{
+					printf("Not ready! read: %d, write: %d\n", last->query->read_query, last->query->current_query);
+				}
+				tps end = chclock::now();
 
-			}
-			tps end = chclock::now();
+				double time = std::chrono::duration_cast<dmilli>(end - start).count();
+				//std::cout << "Waiting for queries took: " << time << " ms" << std::endl;
 
-			double time = std::chrono::duration_cast<dmilli>(end - start).count();
-			//std::cout << "Waiting for queries took: " << time << " seconds" << std::endl;
+				for (size_t i = 0; i < previous_render_passes.size; i++)
+				{
+					auto pass = previous_render_passes[i];
+					long nano_seconds = get_time_elapsed_query_result(pass->query, false);
+					pass->gpu_time.add((nano_seconds / 1000000000.0) * 1000.0);
 
-			for (size_t i = 0; i < previous_render_passes.size; i++)
-			{
-				auto pass = previous_render_passes[i];
-				long nano_seconds = get_time_elapsed_query_result(pass->query, false);
-				pass->gpu_time.add((nano_seconds / 1000000000.0) * 1000.0);
-
-				//printf("%s: cpu: %zg, gpu: %zg\n", pass->name, pass->cpu_time.average(), pass->gpu_time.average());
+					//printf("%s: cpu: %zg, gpu: %zg\n", pass->name, pass->cpu_time.average(), pass->gpu_time.average());
+				}
 			}
 		}
 	}

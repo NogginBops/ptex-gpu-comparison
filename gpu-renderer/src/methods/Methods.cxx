@@ -2,10 +2,11 @@
 #include "Methods.hh"
 
 namespace Methods {
-	const char* method_names[3] = {
+	const char* method_names[4] = {
 		"cpu",
 		"nvidia",
-		"intel"
+		"intel",
+		"hybrid"
 	};
 
 	void init_methods(int width, int height, Ptex::PtexTexture* texture, Ptex::PtexFilter* filter, GLenum mag_filter, GLenum min_filter, int max_anisotropy)
@@ -16,5 +17,6 @@ namespace Methods {
 		cpu.init(width, height, texture, filter);
 		intel.init(width, height, data, mag_filter, min_filter, max_anisotropy);
 		nvidia.init(width, height, data, mag_filter, min_filter, max_anisotropy);
+		hybrid.init(width, height, data, mag_filter, min_filter, max_anisotropy);
 	}
 }
