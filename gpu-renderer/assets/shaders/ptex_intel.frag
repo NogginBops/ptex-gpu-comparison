@@ -15,8 +15,8 @@ layout(std140) uniform FaceDataUniform {
 	FaceData face_data[MAX_FACES];
 };
 
-uniform sampler2DArray aTexBorder[24];
-uniform sampler2DArray aTexClamp[24];
+uniform sampler2DArray aTexBorder[8];
+uniform sampler2DArray aTexClamp[8];
 
 vec3 hsv2rgb(vec3 c)
 {
@@ -33,7 +33,7 @@ vec4 ptexture_single(sampler2DArray tex[32], vec2 uv, uint texIDsliceID)
     return texture(tex[texID], vec3(uv, sliceID));
 }
 
-vec3 ptexture(sampler2DArray texBorder[24], sampler2DArray texClamp[24], vec2 uv, int faceID)
+vec3 ptexture(sampler2DArray texBorder[8], sampler2DArray texClamp[8], vec2 uv, int faceID)
 {
     uint texIDsliceID = face_data[faceID].texIDsliceID;
 
