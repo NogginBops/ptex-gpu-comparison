@@ -4,9 +4,7 @@
 namespace Methods {
 	NvidiaMethod nvidia;
 
-	void NvidiaMethod::init(int width, int height, gl_ptex_data data, GLenum mag_filter, GLenum min_filter, int max_anisotropy) {
-		ptex_data = data;
-
+	void NvidiaMethod::init(int width, int height, GLenum mag_filter, GLenum min_filter, int max_anisotropy) {
 		// setup color output buffer
 		{
 			color_attachment_desc color_desc = {
@@ -66,7 +64,7 @@ namespace Methods {
 		}
 	}
 
-	void NvidiaMethod::render(GLuint vao, int vertex_count, mat4_t mvp, vec3_t bg_color)
+	void NvidiaMethod::render(GLuint vao, int vertex_count, gl_ptex_data ptex_data, mat4_t mvp, vec3_t bg_color)
 	{
 		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer.framebuffer);
 

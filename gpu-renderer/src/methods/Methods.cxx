@@ -9,14 +9,11 @@ namespace Methods {
 		"hybrid"
 	};
 
-	void init_methods(int width, int height, Ptex::PtexTexture* texture, Ptex::PtexFilter* filter, GLenum mag_filter, GLenum min_filter, int max_anisotropy)
+	void init_methods(int width, int height, GLenum mag_filter, GLenum min_filter, int max_anisotropy)
 	{
-		gl_ptex_textures textures = extract_textures(texture);
-		gl_ptex_data data = create_gl_texture_arrays(textures, mag_filter, min_filter);
-
-		cpu.init(width, height, texture, filter);
-		intel.init(width, height, data, mag_filter, min_filter, max_anisotropy);
-		nvidia.init(width, height, data, mag_filter, min_filter, max_anisotropy);
-		hybrid.init(width, height, data, mag_filter, min_filter, max_anisotropy);
+		cpu.init(width, height);
+		intel.init(width, height, mag_filter, min_filter, max_anisotropy);
+		nvidia.init(width, height, mag_filter, min_filter, max_anisotropy);
+		hybrid.init(width, height, mag_filter, min_filter, max_anisotropy);
 	}
 }

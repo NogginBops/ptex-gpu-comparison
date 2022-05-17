@@ -23,16 +23,13 @@ namespace Methods {
 		framebuffer_desc cpu_result_framebuffer_desc;
 		framebuffer_t cpu_result_framebuffer;
 		
-		Ptex::PtexTexture* texture;
-		Ptex::PtexFilter* filter;
-
 		GLuint to_cpu_program;
 		GLuint cpu_stream_program;
 
 		texture_t cpu_stream_texture;
 
-		void init(int width, int height, Ptex::PtexTexture* texture, Ptex::PtexFilter* filter);
-		void render(GLuint vao, int vertex_count, mat4_t mvp, vec3_t bg_color);
+		void init(int width, int height);
+		void render(GLuint vao, int vertex_count, Ptex::PtexTexture* texture, Ptex::PtexFilter* filter, mat4_t mvp, vec3_t bg_color);
 		void resize_buffers(int width, int height);
 	};
 
@@ -42,12 +39,10 @@ namespace Methods {
 
 		GLuint ptex_program;
 
-		gl_ptex_data ptex_data;
-
 		sampler_t border_sampler;
 
-		void init(int width, int height, gl_ptex_data data, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
-		void render(GLuint vao, int vertex_count, mat4_t mvp, vec3_t bg_color);
+		void init(int width, int height, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
+		void render(GLuint vao, int vertex_count, gl_ptex_data ptex_data, mat4_t mvp, vec3_t bg_color);
 		void resize_buffers(int width, int height);
 	};
 
@@ -61,13 +56,11 @@ namespace Methods {
 
 		GLuint ptex_program; 
 
-		gl_ptex_data ptex_data;
-
 		sampler_t border_sampler;
 		sampler_t clamp_sampler;
 
-		void init(int width, int height, gl_ptex_data data, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
-		void render(GLuint vao, int vertex_count, mat4_t mvp, vec3_t bg_color);
+		void init(int width, int height, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
+		void render(GLuint vao, int vertex_count, gl_ptex_data ptex_data, mat4_t mvp, vec3_t bg_color);
 		void resize_buffers(int width, int height);
 	};
 	
@@ -81,13 +74,11 @@ namespace Methods {
 
 		GLuint ptex_program;
 
-		gl_ptex_data ptex_data;
-
 		sampler_t border_sampler;
 		sampler_t clamp_sampler;
 
-		void init(int width, int height, gl_ptex_data data, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
-		void render(GLuint vao, int vertex_count, mat4_t mvp, vec3_t bg_color);
+		void init(int width, int height, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
+		void render(GLuint vao, int vertex_count, gl_ptex_data ptex_data, mat4_t mvp, vec3_t bg_color);
 		void resize_buffers(int width, int height);
 	};
 
@@ -96,5 +87,5 @@ namespace Methods {
 	extern IntelMethod intel;
 	extern HybridMethod hybrid;
 
-	void init_methods(int width, int height, Ptex::PtexTexture* texture, Ptex::PtexFilter* filter, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
+	void init_methods(int width, int height, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
 }

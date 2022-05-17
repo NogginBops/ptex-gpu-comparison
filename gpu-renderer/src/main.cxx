@@ -44,7 +44,15 @@ Methods::Methods prev_rendering_method;
 
 texture_t g_tex_test;
 
-ptex_mesh_t* g_mesh;
+int current_mesh = 0;
+Ptex::PtexFilter* current_filter;
+
+custom_arrays::array_t<const char*> mesh_names(10);
+custom_arrays::array_t<ptex_mesh_t*> meshes(10);
+custom_arrays::array_t<GLuint> mesh_vaos(10);
+custom_arrays::array_t<Ptex::PtexTexture*> ptexTextures(10);
+custom_arrays::array_t<gl_ptex_data> texturesGLData(10);
+custom_arrays::array_t<mat4_t> mesh_model_matrix(10);
 
 typedef struct {
     float fovy;
@@ -426,58 +434,58 @@ void* download_framebuffer(framebuffer_t* framebuffer, GLenum attachment) {
     #define ASSETS_PATH "../../../assets"
 #endif
 
+void add_model(const char* name, const char* model_path, const char* ptex_path, mat4_t model_mat)
+{
+    Ptex::String error_str;
+    Ptex::PtexTexture* ptex = PtexTexture::open(ptex_path, error_str);
+    if (error_str.empty() == false)
+    {
+        printf("Ptex Error at model %s! %s\n", name, error_str.c_str());
+    }
+
+    ptex_mesh_t* mesh = load_ptex_mesh(model_path);
+
+    GLuint mesh_vao;
+    {
+        attribute_desc* attribs = new attribute_desc[4];
+        attribs[0] = {
+            "Position", 3, GL_FLOAT, GL_FALSE, offsetof(ptex_vertex_t, position), false,
+        };
+        attribs[1] = {
+            "Normal", 3, GL_FLOAT, GL_FALSE, offsetof(ptex_vertex_t, normal), false,
+        };
+        attribs[2] = {
+            "UV", 2, GL_FLOAT, GL_TRUE, offsetof(ptex_vertex_t, uv), false,
+        };
+        attribs[3] = {
+            "FaceID", 1, GL_INT, GL_FALSE, offsetof(ptex_vertex_t, face_id), true,
+        };
+
+        vao_desc vao_desc = {
+            "ptex model",
+            4,
+            attribs,
+        };
+
+        mesh_vao = create_vao(&vao_desc, mesh->vertices, sizeof(ptex_vertex_t), mesh->num_vertices);
+
+        delete[] attribs;
+    }
+
+    mesh_names.add(name);
+    meshes.add(mesh);
+    mesh_vaos.add(mesh_vao);
+    ptexTextures.add(ptex);
+    texturesGLData.add(create_gl_texture_arrays(extract_textures(ptex), GL_LINEAR, GL_LINEAR));
+    mesh_model_matrix.add(model_mat);
+}
+
 int main(int argv, char** argc)
 {
     // FIXME: Either make this work for all platforms,
     // or find a better solution for this.
     change_directory(ASSETS_PATH);
     
-    g_mesh = load_ptex_mesh("models/ground_plane/ground_plane.obj");
-    //g_mesh = load_ptex_mesh("models/teapot/teapot.obj");
-    //g_mesh = load_ptex_mesh("models/mud_sphere/mud_sphere.obj");
-
-    Ptex::String error_str;
-    g_ptex_texture = PtexTexture::open("models/ground_plane/ground_plane.ptx", error_str);
-    //g_ptex_texture = PtexTexture::open("models/teapot/teapot.ptx", error_str);
-    //g_ptex_texture = PtexTexture::open("models/mud_sphere/mud_sphere.ptx", error_str);
-
-    if (error_str.empty() == false)
-    {
-        printf("Ptex Error! %s\n", error_str.c_str());
-    }
-
-    /*
-    char* meshTypeString[] = { "mt_triangle", "mt_quad" };
-    char* dataTypeString[] = { "dt_uint8", "dt_uint16", "dt_half", "dt_float" };
-    char* borderModeString[] = { "m_clamp", "m_black", "m_periodic" };
-    char* edgeFilterModeString[] = { "efm_none", "efm_tanvec" };
-
-    auto info = g_ptex_texture->getInfo();
-    std::cout << "meshType: " << meshTypeString[info.meshType] << std::endl;
-    std::cout << "dataType: " << dataTypeString[info.dataType] << std::endl;
-    std::cout << "uBorderMode: " << borderModeString[info.uBorderMode] << std::endl;
-    std::cout << "vBorderMode: " << borderModeString[info.vBorderMode] << std::endl;
-    std::cout << "edgeFilterMode: " << edgeFilterModeString[info.edgeFilterMode] << std::endl;
-    std::cout << "alphaChannel: " << info.alphaChannel << std::endl;
-    std::cout << "numChannels: " << info.numChannels << std::endl;
-    std::cout << "numFaces: " << info.numFaces << std::endl;
-
-    char* metadataTypeString[] = { "mdt_string", "mdt_int8", "mdt_int16", "mdt_int32", "mdt_float", "mdt_double" };
-
-    auto meta = g_ptex_texture->getMetaData();
-    std::cout << "Metadata keys: " << meta->numKeys() << std::endl;
-    for (size_t i = 0; i < meta->numKeys(); i++)
-    {
-        Ptex::MetaDataType metaData;
-        const char* name;
-        meta->getKey(i, name, metaData);
-        printf("%zu %s: %s\n", i, name, metadataTypeString[metaData]);
-    }
-    */
-
-    g_current_filter_type = PtexFilter::FilterType::f_bilinear;
-    g_ptex_filter = Ptex::PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ g_current_filter_type, false, 0, false });
-
     printf("Hello, world!\n");
 
     glfwSetErrorCallback(GLFWErrorCallback);
@@ -569,23 +577,26 @@ int main(int argv, char** argc)
 #endif
     }
 
+    // Load models and textures
+    {
+        g_current_filter_type = PtexFilter::FilterType::f_bilinear;
+        add_model("ground plane", "models/ground_plane/ground_plane.obj", "models/ground_plane/ground_plane.ptx", mat4_scale(1.0f, 1.0f, 1.0f));
+        add_model("teapot", "models/teapot/teapot.obj", "models/teapot/teapot.ptx", mat4_scale(1.0f, 1.0f, 1.0f));
+        add_model("sphere", "models/mud_sphere/mud_sphere.obj", "models/mud_sphere/mud_sphere.ptx", mat4_scale(0.01f, 0.01f, 0.01f));
+
+        current_filter = PtexFilter::getFilter(ptexTextures[current_mesh], PtexFilter::Options{ g_current_filter_type, false, 0, false });
+    }
+    
     glDisable(GL_SCISSOR_TEST);
 
     Methods::init_methods(
         width, height, 
-        g_ptex_texture, g_ptex_filter, 
         GL_LINEAR, GL_LINEAR_MIPMAP_LINEAR,
         16.0f);
 
     ImGuiContext* imctx = ImGui::CreateContext();
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(NULL);
-
-    float vertices[] = {
-        -0.5f, -0.5f, 0.0f,
-        0.5f, -0.5f, 0.0f,
-        0.0f, 0.5f, 0.0f,
-    };
 
     texture_desc tex_test_desc = {
         GL_REPEAT, GL_REPEAT,
@@ -594,60 +605,7 @@ int main(int argv, char** argc)
     };
     g_tex_test = create_texture("textures/uv_space.png", tex_test_desc);
 
-    mesh_t* mesh = load_obj("models/susanne.obj");
-
-    GLuint vao;
-    {
-        attribute_desc* attribs = new attribute_desc[3];
-        attribs[0] = {
-            "Position", 3, GL_FLOAT, GL_FALSE, offsetof(vertex_t, position), false,
-        };
-        attribs[1] = {
-            "UV", 2, GL_FLOAT, GL_TRUE, offsetof(vertex_t, texcoord), false,
-        };
-        attribs[2] = {
-            "Normal", 3, GL_FLOAT, GL_FALSE, offsetof(vertex_t, normal), false,
-        };
-
-        vao_desc vao_desc = {
-            "Susanne",
-            3,
-            attribs,
-        };
-
-        vao = create_vao(&vao_desc, mesh->vertices, sizeof(vertex_t), mesh->num_faces * 3);
-
-        delete[] attribs;
-    }
-
-    GLuint ptex_vao;
-    {
-        attribute_desc* attribs = new attribute_desc[4];
-        attribs[0] = {
-            "Position", 3, GL_FLOAT, GL_FALSE, offsetof(ptex_vertex_t, position), false,
-        };
-        attribs[1] = {
-            "Normal", 3, GL_FLOAT, GL_FALSE, offsetof(ptex_vertex_t, normal), false,
-        };
-        attribs[2] = {
-            "UV", 2, GL_FLOAT, GL_TRUE, offsetof(ptex_vertex_t, uv), false,
-        };
-        attribs[3] = {
-            "FaceID", 1, GL_INT, GL_FALSE, offsetof(ptex_vertex_t, face_id), true,
-        };
-
-        vao_desc vao_desc = {
-            "ptex model",
-            4,
-            attribs,
-        };
-
-        ptex_vao = create_vao(&vao_desc, g_mesh->vertices, sizeof(ptex_vertex_t), g_mesh->num_vertices);
-
-        delete[] attribs;
-    }
-
-    g_camera.center = g_mesh->center;
+    g_camera.center = meshes[current_mesh]->center;
 
     //GLuint program = compile_shader("shaders/default.vert", "shaders/default.frag");
     //GLuint outputProgram = compile_shader("shaders/default.vert", "shaders/output.frag");
@@ -669,8 +627,7 @@ int main(int argv, char** argc)
     float angle_y = 0;
     float angle_z = 0;
     
-    mat4_t model = mat4_scale(0.5f, 0.5f, 0.5f);
-    model = mat4_scale(scale, scale, scale);
+    mat4_t model = mesh_model_matrix[current_mesh];
     model = mat4_mul_mat4(model, mat4_rotate_x(angle_x));
     model = mat4_mul_mat4(model, mat4_rotate_y(angle_y));
     model = mat4_mul_mat4(model, mat4_rotate_z(angle_z));
@@ -681,9 +638,6 @@ int main(int argv, char** argc)
     glEnable(GL_DEPTH_TEST);
 
     vec3_t bg_color = rgb_to_vec3(100, 149, 237);
-
-    glBindVertexArray(vao);
-    glBindVertexArray(ptex_vao);
 
     while (glfwWindowShouldClose(window) == false)
     {
@@ -705,9 +659,29 @@ int main(int argv, char** argc)
                     takeScreenshot = true;
                 }
 
-                ImGui::SliderAngle("Angle X", &angle_x);
-                ImGui::SliderAngle("Angle Y", &angle_y);
-                ImGui::SliderAngle("Angle Z", &angle_z);
+                if (ImGui::CollapsingHeader("Model Transform")) {
+                    ImGui::SliderAngle("Angle X", &angle_x);
+                    ImGui::SliderAngle("Angle Y", &angle_y);
+                    ImGui::SliderAngle("Angle Z", &angle_z);
+                }
+
+                if (ImGui::BeginCombo("Model", mesh_names[current_mesh]))
+                {
+                    for (int i = 0; i < mesh_names.size; i++)
+                    {
+                        bool is_selected = current_mesh == i;
+                        if (ImGui::Selectable(mesh_names[i], is_selected))
+                        {
+                            current_mesh = i;
+                            if (current_filter) current_filter->release();
+                            current_filter = PtexFilter::getFilter(ptexTextures[current_mesh], PtexFilter::Options{ g_current_filter_type, false, 0, false });
+                            g_camera.center = meshes[current_mesh]->center;
+                        }
+                        if (is_selected)
+                            ImGui::SetItemDefaultFocus();
+                    }
+                    ImGui::EndCombo();
+                }
 
                 if (ImGui::BeginCombo("Ptex method", Methods::method_names[(int)current_rendering_method]))
                 {
@@ -745,8 +719,8 @@ int main(int argv, char** argc)
                             if (ImGui::Selectable(filter_names[i], is_selected))
                             {
                                 g_current_filter_type = (PtexFilter::FilterType)i;
-                                g_ptex_filter->release();
-                                g_ptex_filter = PtexFilter::getFilter(g_ptex_texture, PtexFilter::Options{ g_current_filter_type, false, 0, false });
+                                if (current_filter) current_filter->release();
+                                current_filter = PtexFilter::getFilter(ptexTextures[current_mesh], PtexFilter::Options{g_current_filter_type, false, 0, false});
                             }
 
                             if (is_selected)
@@ -842,7 +816,7 @@ int main(int argv, char** argc)
         proj = mat4_perspective(g_camera.fovy, g_camera.aspect, g_camera.near_plane, g_camera.far_plane);
         proj = mat4_transpose(proj);
 
-        model = mat4_scale(scale, scale, scale);
+        model = mesh_model_matrix[current_mesh];
         model = mat4_mul_mat4(model, mat4_rotate_x(angle_x));
         model = mat4_mul_mat4(model, mat4_rotate_y(angle_y));
         model = mat4_mul_mat4(model, mat4_rotate_z(angle_z));
@@ -853,9 +827,9 @@ int main(int argv, char** argc)
         if (takeScreenshot)
         {
             // Render using all methods.
-            Methods::nvidia.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            Methods::nvidia.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
 
-            Methods::intel.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            Methods::intel.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             // resolve intel MS buffer
             glBindFramebuffer(GL_READ_FRAMEBUFFER, Methods::intel.ms_color_framebuffer.framebuffer);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Methods::intel.resolve_color_framebuffer.framebuffer);
@@ -864,7 +838,7 @@ int main(int argv, char** argc)
                 0, 0, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height,
                 GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-            Methods::hybrid.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            Methods::hybrid.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             // resolve hybrid MS buffer
             glBindFramebuffer(GL_READ_FRAMEBUFFER, Methods::hybrid.ms_framebuffer.framebuffer);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Methods::hybrid.resolve_framebuffer.framebuffer);
@@ -873,7 +847,7 @@ int main(int argv, char** argc)
                 0, 0, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height,
                 GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-            Methods::cpu.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            Methods::cpu.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, ptexTextures[current_mesh], current_filter, mvp, bg_color);
 
             // Then we will download all of the final pictures.
             // We also need to resolve the intel MS framebuffer.
@@ -924,19 +898,19 @@ int main(int argv, char** argc)
         switch (current_rendering_method)
         {
         case Methods::Methods::cpu:
-            Methods::cpu.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            Methods::cpu.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, ptexTextures[current_mesh], current_filter, mvp, bg_color);
             break;
 
         case Methods::Methods::nvidia:
-            Methods::nvidia.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            Methods::nvidia.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             break;
 
         case Methods::Methods::intel:
-            Methods::intel.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            Methods::intel.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             break;
 
         case Methods::Methods::hybrid:
-            Methods::hybrid.render(ptex_vao, g_mesh->num_vertices, mvp, bg_color);
+            Methods::hybrid.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             break;
 
         default:
@@ -1008,8 +982,7 @@ int main(int argv, char** argc)
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext(imctx);
 
-    g_ptex_filter->release();
-    g_ptex_texture->release();
+    current_filter->release();
 
     glfwTerminate();
     return EXIT_SUCCESS;

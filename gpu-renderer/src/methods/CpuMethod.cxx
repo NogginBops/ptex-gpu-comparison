@@ -6,10 +6,7 @@
 namespace Methods {
 	CpuMethod cpu;
 
-	void CpuMethod::init(int width, int height, Ptex::PtexTexture* texture, Ptex::PtexFilter* filter) {
-		this->texture = texture;
-		this->filter = filter;
-
+	void CpuMethod::init(int width, int height) {
 		to_cpu_program = compile_shader("to_cpu_program", "shaders/ptex.vert", "shaders/ptex_output.frag");
 		cpu_stream_program = compile_shader("cpu_stream_program", "shaders/fullscreen.vert", "shaders/fullscreen.frag");
 
@@ -111,7 +108,7 @@ namespace Methods {
 		}
 	}
 
-	void CpuMethod::render(GLuint vao, int vertex_count, mat4_t mvp, vec3_t bg_color) {
+	void CpuMethod::render(GLuint vao, int vertex_count, Ptex::PtexTexture* texture, Ptex::PtexFilter* filter, mat4_t mvp, vec3_t bg_color) {
 
 		glBindFramebuffer(GL_FRAMEBUFFER, to_cpu_framebuffer.framebuffer);
 
@@ -158,7 +155,7 @@ namespace Methods {
 			void* uv_deriv_buffer = malloc(pixels * sizeof(vec4_t));
 			glReadPixels(0, 0, width, height, GL_RGBA, GL_FLOAT, uv_deriv_buffer);
 
-			vec3_t* cpu_buffer = calculate_image_cpu(width, height, (uint16_t*)faceID_buffer, (vec3_t*)uv_buffer, (vec4_t*)uv_deriv_buffer, bg_color);
+			vec3_t* cpu_buffer = calculate_image_cpu(width, height, (uint16_t*)faceID_buffer, (vec3_t*)uv_buffer, (vec4_t*)uv_deriv_buffer, bg_color, texture, filter);
 
 			rgb8_t* cpu_rgb8_buffer = vec3_buffer_to_rgb8(cpu_buffer, width, height);
 

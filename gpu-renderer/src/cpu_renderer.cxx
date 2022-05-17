@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <assert.h>
 
-Ptex::PtexTexture* g_ptex_texture;
-Ptex::PtexFilter* g_ptex_filter;
+//Ptex::PtexTexture* g_ptex_texture;
+//Ptex::PtexFilter* g_ptex_filter;
 Ptex::PtexFilter::FilterType g_current_filter_type;
 
 bool use_cross_derivatives = true;
@@ -69,7 +69,7 @@ vec3_t sample_ptex_texture(Ptex::PtexTexture* tex, Ptex::PtexFilter* filter, int
     else assert(false);
 }
 
-vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3_t* uv_buffer, vec4_t* uv_deriv_buffer, vec3_t background_color)
+vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3_t* uv_buffer, vec4_t* uv_deriv_buffer, vec3_t background_color, Ptex::PtexTexture* texture, Ptex::PtexFilter* filter)
 {
     vec3_t* cpu_data = (vec3_t*)malloc(width * height * sizeof(vec3_t));
     assert(cpu_data != NULL);
@@ -102,7 +102,7 @@ vec3_t* calculate_image_cpu(int width, int height, uint16_t* faceID_buffer, vec3
                 uv_deriv.w = 0;
             }
 
-            vec3_t ptex = sample_ptex_texture(g_ptex_texture, g_ptex_filter, id, { uv.x, uv.y }, uv_deriv);
+            vec3_t ptex = sample_ptex_texture(texture, filter, id, { uv.x, uv.y }, uv_deriv);
 
             //const rgb8_t colors[] = { {255, 0, 0}, {0, 255, 0}, {0, 0, 255} };
 

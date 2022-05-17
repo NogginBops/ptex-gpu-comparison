@@ -5,10 +5,8 @@ namespace Methods {
 	
     IntelMethod intel;
 
-	void IntelMethod::init(int width, int height, gl_ptex_data data, GLenum mag_filter, GLenum min_filter, int max_anisotropy)
+	void IntelMethod::init(int width, int height, GLenum mag_filter, GLenum min_filter, int max_anisotropy)
 	{
-        ptex_data = data;
-
         // setup multi-sampler color output buffer for intel method
         {
             color_attachment_desc color_desc = {
@@ -114,7 +112,7 @@ namespace Methods {
         clamp_sampler = create_sampler("sampler: intel.clamp", clamp_desc);
 	}
 
-    void IntelMethod::render(GLuint vao, int vertex_count, mat4_t mvp, vec3_t bg_color) {
+    void IntelMethod::render(GLuint vao, int vertex_count, gl_ptex_data ptex_data, mat4_t mvp, vec3_t bg_color) {
         glBindFramebuffer(GL_FRAMEBUFFER, ms_color_framebuffer.framebuffer);
 
         glBindVertexArray(vao);

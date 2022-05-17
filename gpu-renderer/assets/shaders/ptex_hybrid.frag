@@ -150,6 +150,7 @@ vec3 ptexture_hybrid(sampler2DArray texBorder[NUM_TEX], sampler2DArray texClamp[
     uint texID = data.texIDsliceID & 0xFFFFu;
     vec2 filterSize = fwidth(UV) * textureSize(texBorder[texID], 0).xy;
     float a = smoothstep(0, 1, filterSize.x) + smoothstep(0, 1, filterSize.y);
+    //return vec3(filterSize.x, filterSize.y, filterSize.x > 1 ? 1 : 0);
     if (a > 1.5)
     {
         // This means that we are applying a min filter in at least one axis
@@ -185,7 +186,7 @@ vec3 ptexture_hybrid(sampler2DArray texBorder[NUM_TEX], sampler2DArray texClamp[
         color += ptexture_single(texBorder, n2_uv, face_data[neighbor2_id].texIDsliceID);
         color += ptexture_single(texBorder, n3_uv, face_data[neighbor3_id].texIDsliceID);
 
-        color += vec4(1, 0, 0, 0);
+        //color += vec4(1, 0, 0, 0);
 
         return color.rgb / color.a;
     }
