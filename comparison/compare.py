@@ -207,9 +207,12 @@ def plot_input_image(image, fig, grid_pos, label):
     remove_ticks(axis)
 
 
-def plot_input_images(image1, image2, fig, grid):
-    plot_input_image(image1, fig, grid[0, 0], "Image 1")
-    plot_input_image(image2, fig, grid[0, 1], "image 2")
+def plot_input_images(image1, image2, fig, grid, image_names):
+    if image_names is None:
+        image_names = ["Image 1", "Image 2"]
+
+    plot_input_image(image1, fig, grid[0, 0], image_names[0])
+    plot_input_image(image2, fig, grid[0, 1], image_names[1])
 
 
 def plot_diff_images(diff_images, diff_images_names, fig, grid):
@@ -229,7 +232,8 @@ def plot_diff_images(diff_images, diff_images_names, fig, grid):
 
 
 # Partially taken from: https://scikit-image.org/docs/stable/auto_examples/applications/plot_image_comparison.html
-def output_comparison_images(image1, image2, diff_images, diff_images_names, outfile, show_input_images=False):
+def output_comparison_images(image1, image2, diff_images, diff_images_names, outfile, image_names,
+                             show_input_images=False):
     num_cols = 2
     num_rows = int(np.ceil(len(diff_images) / num_cols))
     fig_height = 4 * num_rows
@@ -246,7 +250,7 @@ def output_comparison_images(image1, image2, diff_images, diff_images_names, out
     outer_gs = gridspec.GridSpec(3, grid_height, figure=fig)
 
     if show_input_images:
-        plot_input_images(image1, image2, fig, outer_gs)
+        plot_input_images(image1, image2, fig, outer_gs, image_names)
 
     diff_gs = gridspec.GridSpecFromSubplotSpec(num_rows * 2, num_cols * 2, subplot_spec=outer_gs[diff_gs_start_row:, :])
 
@@ -290,14 +294,11 @@ def img_diff_contours(image1, image2):
 
 
 def img_gray_pixel_diff(image1, image2):
-    gray_image1 = color.rgb2gray(image1)
-    gray_image2 = color.rgb2gray(image2)
-
     return util.compare_images(gray_image1, gray_image2, method="diff")
 
 
 def img_pixel_diff(image1, image2):
-    return util.compare_images(image1, image2, method="diff")
+    return 3 * util.compare_images(image1, image2, method="diff")
 
 
 def img_checkerboard(image1, image2):
@@ -315,7 +316,8 @@ def filter_img_methods(methods_names):
     return {key: img_comp_methods[key] for key in methods_names}
 
 
-def generate_comparison_images(image1_name, image2_name, comp_methods_names, show_input_images, outfile="out.pgf"):
+def generate_comparison_images(image1_name, image2_name, comp_methods_names, show_input_images, image_names,
+                               outfile="out.pgf"):
     comp_methods = filter_img_methods(comp_methods_names)
 
     image1 = read_image(image1_name)
@@ -323,7 +325,8 @@ def generate_comparison_images(image1_name, image2_name, comp_methods_names, sho
 
     diff_images = [fn(image1, image2) for _, fn in comp_methods.items()]
 
-    output_comparison_images(image1, image2, diff_images, list(comp_methods.keys()), outfile, show_input_images)
+    output_comparison_images(image1, image2, diff_images, list(comp_methods.keys()), outfile, image_names,
+                             show_input_images)
 
 
 def generate_comparison_table(metrics_names, ref_renders_names, gpus_renders_names, scenes_names, res_type="all",
@@ -343,7 +346,7 @@ def generate_comparison_table(metrics_names, ref_renders_names, gpus_renders_nam
 
 def parser_generate_comparison_image(image_args):
     generate_comparison_images(image_args.image1, image_args.image2, image_args.methods, image_args.showinputimages,
-                               image_args.outfile)
+                               image_args.imagenames, image_args.outfile)
 
 
 def parser_generate_comparison_table(table_args):
@@ -442,14 +445,24 @@ def init_image_subparser(imageparser):
         action=argparse.BooleanOptionalAction,
         help="Show input images in generated image"
     )
+    imageparser.add_argument(
+        "-n",
+        "--imagenames",
+        nargs=2,
+        type=str,
+        default=["Image 1", "Image 2"]
+    )
 
 
 def parse_args():
-    cli = argparse.ArgumentParser(description="Latex table of comparison metrics for reference & GPU renders",
-                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    cli = argparse.ArgumentParser(description="Render comparison script")
     subparsers = cli.add_subparsers(title="subcommands", help="Choose to output image or table")
-    table_parser = subparsers.add_parser("table", help="table help")
-    image_parser = subparsers.add_parser("image", help="image help")
+    table_parser = subparsers.add_parser("table",
+                                         description="Latex table of comparison metrics for reference & GPU renders",
+                                         help="table help", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    image_parser = subparsers.add_parser("image",
+                                         description="Visual comparisons of reference & GPU renders",
+                                         help="image help", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     init_table_subparser(table_parser)
     init_image_subparser(image_parser)
