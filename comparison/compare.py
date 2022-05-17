@@ -12,6 +12,7 @@ import matplotlib.gridspec as gridspec
 from skimage import color
 import numpy as np
 import cv2
+import re
 
 matplotlib.use("pgf")
 matplotlib.rcParams.update({
@@ -52,7 +53,7 @@ def read_images(img_names):
 
 
 def dir_files(path):
-    return [file for file in listdir(path) if isfile(join(path, file))]
+    return [join(path, file) for file in listdir(path) if isfile(join(path, file)) and file.endswith(".png")]
 
 
 def load_images(ref_renders_names, gpus_renders_names):
@@ -84,20 +85,15 @@ def ref_gpus_lists(ref_images, gpus_images):
     return [zip(ref_images, gpu_images) for gpu_images in gpus_images]
 
 
-def gen_gpu_names(num_gpus):
-    return ["GPU_" + str(gpu_id) for gpu_id in range(0, num_gpus)]
-
-
-def get_dataframe_parameters(comp_metrics, num_gpus):
+def get_dataframe_parameters(comp_metrics, implementation_names):
     metric_names = [name.upper() for name in comp_metrics]
-    implementation_names = gen_gpu_names(num_gpus)
     levels_names = ['Implementation', 'Scene']
 
     return metric_names, implementation_names, levels_names
 
 
-def combine_res_dataframes(dataframes, comp_metrics, num_gpus):
-    metric_names, implementation_names, levels_names = get_dataframe_parameters(comp_metrics, num_gpus)
+def combine_res_dataframes(dataframes, comp_metrics, implementations_names):
+    metric_names, implementation_names, levels_names = get_dataframe_parameters(comp_metrics, implementations_names)
 
     combined_dataframe = pd.concat(dataframes, keys=implementation_names, names=levels_names)
     combined_dataframe.columns = metric_names
@@ -105,10 +101,10 @@ def combine_res_dataframes(dataframes, comp_metrics, num_gpus):
     return combined_dataframe
 
 
-def gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names):
+def gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names, implementations_names):
     dataframes = ref_gpu_dataframes(ref_images, gpus_images, comp_metrics, scenes_names)
 
-    return combine_res_dataframes(dataframes, comp_metrics, len(gpus_images))
+    return combine_res_dataframes(dataframes, comp_metrics, implementations_names)
 
 
 def metrics_avg_dataframe(dataframe):
@@ -120,12 +116,13 @@ def single_metric_dataframe(dataframe):
 
 
 def get_latex_table(dataframe):
-    return dataframe.style.to_latex()
+    return dataframe.style.to_latex(hrules=True)
 
 
-def make_latex_table(ref_renders_names, gpus_renders_names, comp_metrics, scenes_names, res_type):
+def make_latex_table(ref_renders_names, gpus_renders_names, comp_metrics, implementations_names, scenes_names,
+                     res_type):
     ref_images, gpus_images = load_images(ref_renders_names, gpus_renders_names)
-    dataframe = gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names)
+    dataframe = gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names, implementations_names)
     requested_dataframe = keyword_to_dataframe(dataframe, res_type)
     dataframe_latex = get_latex_table(requested_dataframe)
 
@@ -150,27 +147,28 @@ def valid_metrics(metrics_names):
     return {key: comparison_metrics[key] for key in metrics_names}
 
 
-def valid_scenes_names(scenes_names, ref_renders_names):
+def valid_scenes_names(scenes_names, renders_names):
     if scenes_names is None:
-        return range(0, len(ref_renders_names))
+        return [re.sub('.+/', '', name)[:-4] for name in renders_names]
     else:
         return scenes_names
 
 
 def valid_renders_names(renders_names):
-    if not renders_names[-1].endswith(".png"):
-        return listdir(renders_names[0])
-    else:
+    if renders_names[0].endswith(".png"):
         return renders_names
+    else:
+        return dir_files(renders_names[0])
 
 
 def valid_comp_parameters(metrics_names, scenes_names, ref_renders_names, gpus_renders_names):
     val_metrics = valid_metrics(metrics_names)
-    val_scenes_names = valid_scenes_names(scenes_names, ref_renders_names)
     val_ref_renders_names = valid_renders_names(ref_renders_names)
-    val_gpus_renders_names = [valid_renders_names(names) for names in gpus_renders_names]
+    val_implementations_names = [names[0] for names in gpus_renders_names]
+    val_gpus_renders_names = [valid_renders_names(names[1:]) for names in gpus_renders_names]
+    val_scenes_names = valid_scenes_names(scenes_names, val_gpus_renders_names[0])
 
-    return val_metrics, val_scenes_names, val_ref_renders_names, val_gpus_renders_names
+    return val_metrics, val_scenes_names, val_ref_renders_names, val_gpus_renders_names, val_implementations_names
 
 
 def output_comparisons(dataframe_latex, outfile):
@@ -321,14 +319,15 @@ def generate_comparison_images(image1_name, image2_name, comp_methods_names, sho
 
 def generate_comparison_table(metrics_names, ref_renders_names, gpus_renders_names, scenes_names, res_type="all",
                               outfile="out.tex"):
-    val_metrics_names, val_scenes_names, val_ref_renders_names, val_gpus_renders_names = valid_comp_parameters(
+    val_metrics_names, val_scenes_names, val_ref_renders_names, val_gpus_renders_names, \
+    val_implementations_names = valid_comp_parameters(
         metrics_names,
         scenes_names,
         ref_renders_names,
         gpus_renders_names)
 
     dataframe_latex = make_latex_table(val_ref_renders_names, val_gpus_renders_names, val_metrics_names,
-                                       val_scenes_names, res_type)
+                                       val_implementations_names, val_scenes_names, res_type)
 
     output_comparisons(dataframe_latex, outfile)
 
@@ -456,7 +455,6 @@ img_comp_methods = {
     "ssim": img_ssim_diff,
     "diffcontours": img_diff_contours
 }
-
 
 comparison_metrics = {
     "psnr": psnr,
