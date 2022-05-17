@@ -1,17 +1,14 @@
 import pandas as pd
 import argparse
-from skimage import io
-from skimage import metrics
-from skimage import util
+from skimage import metrics, io, util, color, restoration
 from os import listdir
 from os.path import isfile, join
 import matplotlib
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from skimage import color
+from matplotlib import pyplot as plt, gridspec as gridspec
 import numpy as np
 import cv2
 import re
+import pywt
 
 matplotlib.use("pgf")
 matplotlib.rcParams.update({
@@ -28,6 +25,13 @@ def psnr(ref, res):
 
 def mse(ref, res):
     return metrics.mean_squared_error(ref, res)
+
+
+def cwssim(ref, res):
+    ref_cw = restoration.denoise_wavelet(ref, wavelet='cmor')
+    res_cw = restoration.denoise_wavelet(res, wavelet='cmor')
+
+    return metrics.structural_similarity(ref_cw, res_cw, channel_axis=2)
 
 
 def ssim(ref, res):
@@ -395,7 +399,7 @@ def init_table_subparser(tableparser):
         "--metrics",
         nargs="*",
         type=str,
-        default=["psnr", "mse", "ssim", "nrmse", "mae"],
+        default=["psnr", "mse", "ssim", "nrmse"],
         help="Metrics to be calculated"
     )
 
@@ -467,7 +471,8 @@ comparison_metrics = {
     "mse": mse,
     "ssim": ssim,
     "nrmse": nrmse,
-    "mae": mae
+    "mae": mae,
+    "cwssim": cwssim
 }
 
 if __name__ == "__main__":
