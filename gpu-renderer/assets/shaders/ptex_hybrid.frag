@@ -149,7 +149,8 @@ vec3 ptexture_hybrid(sampler2DArray texBorder[NUM_TEX], sampler2DArray texClamp[
     // Figure out if we will be applying a min or mag filter
     uint texID = data.texIDsliceID & 0xFFFFu;
     vec2 filterSize = fwidth(UV) * textureSize(texBorder[texID], 0).xy;
-    if (max(filterSize.x, filterSize.y) > 1)
+    float a = smoothstep(0, 1, filterSize.x) + smoothstep(0, 1, filterSize.y);
+    if (a > 1.5)
     {
         // This means that we are applying a min filter in at least one axis
         // With MSAA this means we can get away with only one texture sample.
@@ -183,6 +184,8 @@ vec3 ptexture_hybrid(sampler2DArray texBorder[NUM_TEX], sampler2DArray texClamp[
         color += ptexture_single(texBorder, n1_uv, face_data[neighbor1_id].texIDsliceID);
         color += ptexture_single(texBorder, n2_uv, face_data[neighbor2_id].texIDsliceID);
         color += ptexture_single(texBorder, n3_uv, face_data[neighbor3_id].texIDsliceID);
+
+        color += vec4(1, 0, 0, 0);
 
         return color.rgb / color.a;
     }

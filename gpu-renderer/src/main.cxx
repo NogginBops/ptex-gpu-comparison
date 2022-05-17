@@ -760,6 +760,15 @@ int main(int argv, char** argc)
                         glSamplerParameterf(Methods::nvidia.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
                         Methods::nvidia.border_sampler.desc.max_anisotropy = curr_aniso;
                     }
+
+                    if (ImGui::SliderInt("MSAA", &Methods::nvidia.framebuffer_desc.samples, 1, 16))
+                    {
+                        recreate_framebuffer(
+                            &Methods::nvidia.framebuffer,
+                            Methods::nvidia.framebuffer_desc,
+                            Methods::nvidia.framebuffer.width,
+                            Methods::nvidia.framebuffer.height);
+                    }
                     break;
                 }
                 case Methods::Methods::intel:

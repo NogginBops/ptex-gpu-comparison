@@ -227,7 +227,7 @@ gl_ptex_data create_gl_texture_arrays(gl_ptex_textures textures, GLenum mag_filt
 		}
 
 		glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
-
+		
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 
@@ -236,6 +236,8 @@ gl_ptex_data create_gl_texture_arrays(gl_ptex_textures textures, GLenum mag_filt
 
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, mag_filter);
 		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, min_filter);
+
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BASE_LEVEL, 0);
 	}
 
 	custom_arrays::array_t<array_texture_t>* array_textures = new custom_arrays::array_t<array_texture_t>(textures.num_resolutions);

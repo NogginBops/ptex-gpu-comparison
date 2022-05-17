@@ -92,6 +92,8 @@ namespace Methods {
 
 		glDrawArrays(GL_TRIANGLES, 0, vertex_count);
 
+		glUseProgram(0);
+
 		for (int i = 0; i < ptex_data.array_textures->size; i++)
 		{
 			glActiveTexture(GL_TEXTURE0 + i);
