@@ -104,6 +104,7 @@ set(IMGUI_BACKEND
 
 target_include_directories(${TARGET} PUBLIC lib/imgui lib/imgui/backends)
 
+cmake_policy(SET CMP0076 NEW)
 target_sources(${TARGET} PUBLIC ${IMGUI_HEADERS} PRIVATE ${IMGUI_SOURCES} ${IMGUI_BACKEND})
 
 ######## Copy asset folder ########
