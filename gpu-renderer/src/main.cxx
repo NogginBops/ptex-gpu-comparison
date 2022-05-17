@@ -420,11 +420,17 @@ void* download_framebuffer(framebuffer_t* framebuffer, GLenum attachment) {
     return buffer;
 }
 
+#ifdef __APPLE__
+    #define ASSETS_PATH "../assets"
+#else
+    #define ASSETS_PATH "../../../assets"
+#endif
+
 int main(int argv, char** argc)
 {
     // FIXME: Either make this work for all platforms,
     // or find a better solution for this.
-    change_directory("../../../assets");
+    change_directory(ASSETS_PATH);
     
     g_mesh = load_ptex_mesh("models/ground_plane/ground_plane.obj");
     //g_mesh = load_ptex_mesh("models/teapot/teapot.obj");
