@@ -69,6 +69,67 @@ typedef struct {
 
 camera_t g_camera;
 
+struct saved_viewpoint {
+    char name[128];
+    camera_t camera;
+};
+
+custom_arrays::array_t<const char*> viewpoint_names(0);
+custom_arrays::array_t<saved_viewpoint> viewpoints(0);
+
+void load_viewpoints_file(const char* path) {
+    FILE* file = fopen(path, "rb");
+    assert(file != NULL);
+
+    fseek(file, 0, SEEK_END);
+    size_t size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    if (size == 0)
+    {
+        // This viewpoints file is uninitialized
+        viewpoints = custom_arrays::array_t<saved_viewpoint>(10);
+        fclose(file);
+        return;
+    }
+
+    size_t read_size;
+
+    // Read the number of viewpoints this file contains.
+    int viewpoint_count;
+    read_size = fread(&viewpoint_count, sizeof(int), 1, file);
+    assert(read_size == 1);
+    assert(viewpoint_count >= 0);
+
+    // Allocate memory for that number of viewpoints
+    saved_viewpoint* views = (saved_viewpoint*)malloc(viewpoint_count * sizeof(saved_viewpoint));
+    assert(views != NULL);
+
+    read_size = fread(views, sizeof(saved_viewpoint), viewpoint_count, file);
+    assert(read_size == viewpoint_count);
+
+    fclose(file);
+
+    viewpoints = custom_arrays::array_t<saved_viewpoint>(views, viewpoint_count);
+}
+
+void save_viewpoints_file(const char* path) {
+    FILE* file = fopen(path, "wb");
+    assert(file != NULL);
+
+    int* count = (int*)alloca(sizeof(int));
+    *count = viewpoints.size;
+
+    int elements_written;
+    elements_written = fwrite(count, sizeof(int), 1, file);
+    assert(elements_written == 1);
+    elements_written = fwrite(viewpoints.arr, sizeof(saved_viewpoint), viewpoints.size, file);
+    assert(elements_written == viewpoints.size);
+
+    fflush(file);
+    fclose(file);
+}
+
 const float MOUSE_SPEED_X = -0.01f;
 const float MOUSE_SPEED_Y = -0.01f;
 
@@ -434,6 +495,8 @@ void* download_framebuffer(framebuffer_t* framebuffer, GLenum attachment) {
     #define ASSETS_PATH "../../../assets"
 #endif
 
+#define VIEWPOINTS_FILE "viewpoints.vp"
+
 void add_model(const char* name, const char* model_path, const char* ptex_path, mat4_t model_mat)
 {
     Ptex::String error_str;
@@ -485,6 +548,8 @@ int main(int argv, char** argc)
     // FIXME: Either make this work for all platforms,
     // or find a better solution for this.
     change_directory(ASSETS_PATH);
+
+    load_viewpoints_file(VIEWPOINTS_FILE);
     
     printf("Hello, world!\n");
 
@@ -805,6 +870,109 @@ int main(int argv, char** argc)
                 {
                     reset_camera(&g_camera);
                 }
+
+                if (ImGui::CollapsingHeader("Viewpoints", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    static char viewpoint_name[128];
+
+                    static int current_viewpoint = 0;
+
+                    // This list needs to be recreated every time we need it
+                    // The underlying memory might have moved.
+                    viewpoint_names.clear();
+                    for (int i = 0; i < viewpoints.size; i++)
+                    {
+                        viewpoint_names.add(viewpoints[i].name);
+                    }
+
+                    if (ImGui::BeginListBox("Viewpoint"))
+                    {
+                        static bool editing_name = false;
+                        int remove_index = -1;
+                        for (size_t i = 0; i < viewpoint_names.size; i++)
+                        {
+                            bool is_selected = current_viewpoint == i;
+
+                            if (is_selected && editing_name == true)
+                            {
+                                if (ImGui::InputText("###edit", viewpoints[i].name, sizeof(viewpoints[i].name), ImGuiInputTextFlags_AutoSelectAll | ImGuiInputTextFlags_EnterReturnsTrue))
+                                {
+                                    editing_name = false;
+                                }
+                            }
+                            else if (ImGui::Selectable(viewpoint_names[i], is_selected, ImGuiSelectableFlags_AllowDoubleClick | ImGuiSelectableFlags_AllowItemOverlap))
+                            {
+                                if (ImGui::IsMouseDoubleClicked(0)) editing_name = true;
+                                else editing_name = false;
+
+                                current_viewpoint = i;
+
+                                // Copy over all camera data except center and aspect.
+                                auto* cam = &viewpoints[current_viewpoint].camera;
+                                g_camera.fovy = cam->fovy;
+                                g_camera.near_plane = cam->near_plane;
+                                g_camera.far_plane = cam->far_plane;
+                                g_camera.offset = cam->offset;
+                                g_camera.distance = cam->distance;
+                                g_camera.distance_t = cam->distance_t;
+                                g_camera.x_axis_rot = cam->x_axis_rot;
+                                g_camera.y_axis_rot = cam->y_axis_rot;
+                                g_camera.quaternion = cam->quaternion;
+                            }
+
+                            ImGui::SameLine(ImGui::GetColumnWidth(0) - 10);
+                            char label[100];
+                            sprintf(label, "x###%zd", i);
+                            if (ImGui::SmallButton(label)) {
+                                // Remove this from the list
+                                remove_index = i;
+                            }
+
+                            if (is_selected) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndListBox();
+
+                        // Check if we should remove one of the items
+                        if (remove_index != -1)
+                        {
+                            // HACK: Quick and diry remove code
+                            for (size_t i = remove_index; i < viewpoints.size-1; i++)
+                            {
+                                viewpoints[i] = viewpoints[i + 1];
+                            }
+                            viewpoints.size -= 1;
+                        }
+                    }
+
+                    static bool save_modal_open = false;
+                    if (ImGui::Button("Save viewpoint"))
+                    {
+                        ImGui::OpenPopup("Save viewpoint");
+                        memset(viewpoint_name, 0, sizeof(viewpoint_name));
+
+                        save_modal_open = true;
+                    }
+
+                    if (ImGui::BeginPopupModal("Save viewpoint", &save_modal_open))
+                    {
+                        ImGui::InputText("Viewpoint name", viewpoint_name, sizeof(viewpoint_name));
+                        ImGui::SetItemDefaultFocus();
+
+                        size_t length = strnlen(viewpoint_name, sizeof(viewpoint_name));
+                        bool disable = length == 0;
+
+                        ImGui::BeginDisabled(disable);
+                        if (ImGui::Button("Save")) {
+                            saved_viewpoint point;
+                            memcpy(point.name, viewpoint_name, sizeof(viewpoint_name));
+                            point.camera = g_camera;
+                            viewpoints.add(point);
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::EndDisabled();
+                        ImGui::EndPopup();
+                    }
+                }
             }
 
             profiler::show_profiler();
@@ -991,6 +1159,8 @@ int main(int argv, char** argc)
     ImGui::DestroyContext(imctx);
 
     current_filter->release();
+
+    save_viewpoints_file(VIEWPOINTS_FILE);
 
     glfwTerminate();
     return EXIT_SUCCESS;
