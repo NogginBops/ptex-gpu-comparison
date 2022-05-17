@@ -688,7 +688,9 @@ int main(int argv, char** argc)
     while (glfwWindowShouldClose(window) == false)
     {
         profiler::new_frame();
-        profiler::push_span("Frame", 0);
+        #ifndef __APPLE__
+            profiler::push_span("Frame", 0);
+        #endif
 
         glfwPollEvents();
 
@@ -918,8 +920,10 @@ int main(int argv, char** argc)
         //Methods::nvidia.render(ptex_vao, g_teapot_mesh->num_vertices, mvp, bg_color);
         if (has_KHR_debug)
             glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, pass_name);
-        
-        profiler::push_span("method", 1);
+
+        #ifndef __APPLE__
+            profiler::push_span("method", 1);
+        #endif
 
         switch (current_rendering_method)
         {
@@ -943,7 +947,9 @@ int main(int argv, char** argc)
             assert(false); break;
         }
 
-        profiler::pop_span(1); // pop "method"
+        #ifndef __APPLE__
+            profiler::pop_span(1); // pop "method"
+        #endif
 
         if (has_KHR_debug)
             glPopDebugGroup();
@@ -998,8 +1004,10 @@ int main(int argv, char** argc)
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
-        
-        profiler::pop_span(0); // pop "Frame"
+
+        #ifndef __APPLE__
+            profiler::pop_span(0); // pop "Frame"
+        #endif
 
         glfwSwapBuffers(window);
     }
