@@ -3,7 +3,6 @@ import argparse
 from skimage import io
 from skimage import metrics
 from skimage import util
-# from sklearn import metrics as learnmetrics
 from os import listdir
 from os.path import isfile, join
 import matplotlib
@@ -40,8 +39,14 @@ def nrmse(ref, res):
 
 
 def mae(ref, res):
-    # learnmetrics.mean_absolute_error(ref, res)
-    return 1337
+    ref_lab = color.rgb2lab(ref)
+    res_lab = color.rgb2lab(res)
+
+    total_error = sum(sum(color.deltaE_cie76(ref_lab, res_lab)))
+
+    mean_abs_error = total_error / len(ref_lab)
+
+    return mean_abs_error
 
 
 def read_image(img_name):
@@ -357,7 +362,8 @@ def init_table_subparser(tableparser):
         nargs="+",
         type=str,
         action="append",
-        help="AT LEAST ONE REQUIRED! Directory or space-separated list of GPU-rendered PNGs",
+        help="AT LEAST ONE REQUIRED! Name of renderer followed by directory or space-separated list of GPU-rendered "
+             "PNGs",
         required=True
     )
     tableparser.add_argument(
@@ -389,7 +395,7 @@ def init_table_subparser(tableparser):
         "--metrics",
         nargs="*",
         type=str,
-        default=["psnr", "mse", "ssim", "nrmse"],
+        default=["psnr", "mse", "ssim", "nrmse", "mae"],
         help="Metrics to be calculated"
     )
 
