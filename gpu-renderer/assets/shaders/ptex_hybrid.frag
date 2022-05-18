@@ -142,16 +142,20 @@ vec3 ptexture_intel(sampler2DArray texBorder[NUM_TEX], sampler2DArray texClamp[N
     return color;
 }
 
+float hueristic(vec2 tex_size, vec2 uv)
+{
+    return length(dFdx(uv * tex_size)) * length(dFdy(uv * tex_size));
+}
+
 vec3 ptexture_hybrid(sampler2DArray texBorder[NUM_TEX], sampler2DArray texClamp[NUM_TEX], vec2 uv, int faceID)
 {
     FaceData data = face_data[faceID];
 
     // Figure out if we will be applying a min or mag filter
     uint texID = data.texIDsliceID & 0xFFFFu;
-    vec2 filterSize = fwidth(UV) * textureSize(texBorder[texID], 0).xy;
-    float a = smoothstep(0, 1, filterSize.x) + smoothstep(0, 1, filterSize.y);
-    //return vec3(filterSize.x, filterSize.y, filterSize.x > 1 ? 1 : 0);
-    if (a > 1.5)
+
+    float h = hueristic(textureSize(texBorder[texID], 0).xy, uv);
+    if (h > 1)
     {
         // This means that we are applying a min filter in at least one axis
         // With MSAA this means we can get away with only one texture sample.
