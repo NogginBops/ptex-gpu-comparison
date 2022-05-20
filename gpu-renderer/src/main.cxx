@@ -74,6 +74,7 @@ struct saved_viewpoint {
     camera_t camera;
 };
 
+int current_viewpoint = -1;
 custom_arrays::array_t<const char*> viewpoint_names(0);
 custom_arrays::array_t<saved_viewpoint> viewpoints(0);
 
@@ -167,6 +168,8 @@ void reset_camera(camera_t* camera)
     camera->x_axis_rot = 0;
     camera->y_axis_rot = 0;
     camera->quaternion = quat_identity();
+
+    current_viewpoint = -1;
 }
 
 void GLFWErrorCallback(int error_code, const char* description)
@@ -300,6 +303,8 @@ void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
         g_camera.y_axis_rot += ydiff * MOUSE_SPEED_Y;
 
         g_camera.y_axis_rot = float_clamp(g_camera.y_axis_rot, TO_RADIANS(CAMERA_MIN_Y), TO_RADIANS(CAMERA_MAX_Y));
+
+        current_viewpoint = -1;
     }
 
     if (translate_camera)
@@ -313,6 +318,8 @@ void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
         float speed = float_eerp(0.5f, 150.0f, g_camera.distance_t);
 
         g_camera.offset = vec3_add(g_camera.offset, vec3_add(vec3_mul(up, ydiff * MOUSE_TRANSLATION_SPEED_Y * speed), vec3_mul(right, xdiff * MOUSE_TRANSLATION_SPEED_X * speed)));
+
+        current_viewpoint = -1;
     }
 
     const vec3_t x_axis = { 1, 0, 0 };
@@ -875,8 +882,6 @@ int main(int argv, char** argc)
                 {
                     static char viewpoint_name[128];
 
-                    static int current_viewpoint = 0;
-
                     // This list needs to be recreated every time we need it
                     // The underlying memory might have moved.
                     viewpoint_names.clear();
@@ -1034,11 +1039,25 @@ int main(int argv, char** argc)
             rgb8_t* hybrid_rgb8_data = vec3_buffer_to_rgb8(hybrid_data, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height);
             rgb8_t* cpu_rgb8_data = vec3_buffer_to_rgb8(cpu_data, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height);
 
-            // FIXME: Add scene name to file name...
-            stbi_write_png("nvidia.png", Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height, 3, nvidia_rgb8_data, Methods::nvidia.framebuffer.width * 3);
-            stbi_write_png("intel.png", Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height, 3, intel_rgb8_data, Methods::intel.resolve_color_framebuffer.width * 3);
-            stbi_write_png("hybrid.png", Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height, 3, hybrid_rgb8_data, Methods::hybrid.resolve_framebuffer.width * 3);
-            stbi_write_png("cpu.png", Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height, 3, cpu_rgb8_data, Methods::cpu.cpu_result_framebuffer.width * 3);
+            char filename[128];
+            const char* viewpoint_name = current_viewpoint == -1 ? "no_viewpoint" : viewpoint_names[current_viewpoint];
+            
+            // Blindly belive we created the directory successfully.
+            create_directory("screenshots");
+            sprintf(filename, "screenshots/%s", viewpoint_name);
+            create_directory(filename);
+
+            sprintf(filename, "screenshots/%s/nvidia.png", viewpoint_name);
+            stbi_write_png(filename, Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height, 3, nvidia_rgb8_data, Methods::nvidia.framebuffer.width * 3);
+            
+            sprintf(filename, "screenshots/%s/intel.png", viewpoint_name);
+            stbi_write_png(filename, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height, 3, intel_rgb8_data, Methods::intel.resolve_color_framebuffer.width * 3);
+            
+            sprintf(filename, "screenshots/%s/hybrid.png", viewpoint_name);
+            stbi_write_png(filename, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height, 3, hybrid_rgb8_data, Methods::hybrid.resolve_framebuffer.width * 3);
+            
+            sprintf(filename, "screenshots/%s/cpu.png", viewpoint_name);
+            stbi_write_png(filename, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height, 3, cpu_rgb8_data, Methods::cpu.cpu_result_framebuffer.width * 3);
 
             free(nvidia_data);
             free(intel_data);
