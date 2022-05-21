@@ -35,3 +35,13 @@ const char* get_current_directory()
 	assert(false);
 #endif
 }
+
+bool create_directory(const char* dirname)
+{
+#if WIN32
+	BOOL success = CreateDirectory(dirname, NULL);
+	return success != 0;
+#else
+	mkdir(dirname, 0x777);
+#endif
+}
