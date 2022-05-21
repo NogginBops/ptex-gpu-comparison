@@ -81,7 +81,9 @@ def ref_gpu_res(comp_metrics, img_pairs):
 
 
 def ref_gpu_dataframe(img_pairs, comp_metrics, scenes_names):
-    return pd.DataFrame(ref_gpu_res(comp_metrics, img_pairs), index=scenes_names)
+    metric_names_upper = [name.upper() for name in comp_metrics]
+
+    return pd.DataFrame(ref_gpu_res(comp_metrics, img_pairs), index=scenes_names, columns=metric_names_upper)
 
 
 def ref_gpu_dataframes(ref_images, gpus_images, comp_metrics, scenes_names):
@@ -94,26 +96,27 @@ def ref_gpus_lists(ref_images, gpus_images):
     return [zip(ref_images, gpu_images) for gpu_images in gpus_images]
 
 
-def get_dataframe_parameters(comp_metrics, implementation_names):
-    metric_names = [name.upper() for name in comp_metrics]
+def get_dataframe_parameters(implementation_names):
     levels_names = ['Implementation', 'Scene']
 
-    return metric_names, implementation_names, levels_names
+    return implementation_names, levels_names
 
 
-def combine_res_dataframes(dataframes, comp_metrics, implementations_names):
-    metric_names, implementation_names, levels_names = get_dataframe_parameters(comp_metrics, implementations_names)
+def combine_res_dataframes(dataframes, implementations_names):
+    implementation_names, levels_names = get_dataframe_parameters(implementations_names)
 
-    combined_dataframe = pd.concat(dataframes, keys=implementation_names, names=levels_names)
-    combined_dataframe.columns = metric_names
+    combined_dataframe = pd.concat(dataframes, keys=implementation_names, names=levels_names, axis=1)
+    sorted_column_names = combined_dataframe.columns.tolist().sort(key=lambda x: x[1])
+    print(sorted_column_names)
+    alternating_combined_dataframe = combined_dataframe.reindex(sorted_column_names, axis=1)
 
-    return combined_dataframe
+    return alternating_combined_dataframe
 
 
 def gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names, implementations_names):
     dataframes = ref_gpu_dataframes(ref_images, gpus_images, comp_metrics, scenes_names)
 
-    return combine_res_dataframes(dataframes, comp_metrics, implementations_names)
+    return combine_res_dataframes(dataframes, implementations_names)
 
 
 def metrics_avg_dataframe(dataframe):
@@ -121,21 +124,24 @@ def metrics_avg_dataframe(dataframe):
 
 
 def single_metric_dataframe(dataframe):
-    return dataframe.iloc[:, 0].unstack()
+    return dataframe.iloc[:, 0].unstack().transpose()
 
 
 def get_latex_table(dataframe):
     return dataframe.style.to_latex(hrules=True)
 
 
-def make_latex_table(ref_renders_names, gpus_renders_names, comp_metrics, implementations_names, scenes_names,
-                     res_type):
-    ref_images, gpus_images = load_images(ref_renders_names, gpus_renders_names)
-    dataframe = gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names, implementations_names)
-    requested_dataframe = keyword_to_dataframe(dataframe, res_type)
-    dataframe_latex = get_latex_table(requested_dataframe)
+def get_plot(dataframe):
+    dataframe["idx"] = dataframe.index
+    dataframe["implementation1"] = dataframe.iloc[:, 0]
+    dataframe["implementation2"] = dataframe.iloc[:, 1]
 
-    return dataframe_latex
+    ax = dataframe.plot.scatter(x="idx", y="implementation1", color="Blue", label=dataframe.iloc[:, 0].name)
+    dataframe.plot.scatter(x="idx", y="implementation2", color="Red", label=dataframe.iloc[:, 1].name, ax=ax)
+    ax.vlines(x=dataframe.index, ymin=dataframe.iloc[:, 0], ymax=dataframe.iloc[:, 1])
+    ax.set(xlabel="Scenarios", ylabel="Measured values")
+
+    return ax
 
 
 def keyword_to_dataframe(dataframe, res_type="all"):
@@ -168,22 +174,6 @@ def valid_renders_names(renders_names):
         return renders_names
     else:
         return dir_files(renders_names[0])
-
-
-def valid_comp_parameters(metrics_names, scenes_names, ref_renders_names, gpus_renders_names):
-    val_metrics = valid_metrics(metrics_names)
-    val_ref_renders_names = valid_renders_names(ref_renders_names)
-    val_implementations_names = [names[0] for names in gpus_renders_names]
-    val_gpus_renders_names = [valid_renders_names(names[1:]) for names in gpus_renders_names]
-    val_scenes_names = valid_scenes_names(scenes_names, val_gpus_renders_names[0])
-
-    return val_metrics, val_scenes_names, val_ref_renders_names, val_gpus_renders_names, val_implementations_names
-
-
-def output_comparisons(dataframe_latex, outfile):
-    print("Output saved in", outfile)
-    print(dataframe_latex)
-    write_table(dataframe_latex, outfile)
 
 
 def remove_ticks(plot):
@@ -329,19 +319,57 @@ def generate_comparison_images(image1_name, image2_name, comp_methods_names, sho
                              show_input_images)
 
 
-def generate_comparison_table(metrics_names, ref_renders_names, gpus_renders_names, scenes_names, res_type="all",
-                              outfile="out.tex"):
+def make_table_output(ref_renders_names, gpus_renders_names, comp_metrics, implementations_names, scenes_names,
+                      res_type, should_plot):
+    ref_images, gpus_images = load_images(ref_renders_names, gpus_renders_names)
+    dataframe = gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names, implementations_names)
+    requested_dataframe = keyword_to_dataframe(dataframe, res_type)
+
+    if should_plot:
+        dataframe_latex = get_plot(requested_dataframe)
+    else:
+        dataframe_latex = get_latex_table(requested_dataframe)
+
+    return dataframe_latex
+
+
+def valid_comp_parameters(metrics_names, scenes_names, ref_renders_names, gpus_renders_names):
+    val_metrics = valid_metrics(metrics_names)
+    val_ref_renders_names = valid_renders_names(ref_renders_names)
+    val_implementations_names = [names[0] for names in gpus_renders_names]
+    val_gpus_renders_names = [valid_renders_names(names[1:]) for names in gpus_renders_names]
+    val_scenes_names = valid_scenes_names(scenes_names, val_gpus_renders_names[0])
+
+    return val_metrics, val_scenes_names, val_ref_renders_names, val_gpus_renders_names, val_implementations_names
+
+
+def output_plot(dataframe_plot, outfile="out.png"):
+    plt.savefig(outfile)
+    print("Output saved in", outfile)
+
+
+def output_comparisons(dataframe_latex, outfile="out.tex"):
+    print("Output saved in", outfile)
+    print(dataframe_latex)
+    write_table(dataframe_latex, outfile)
+
+
+def generate_comparison_table(metrics_names, ref_renders_names, gpus_renders_names, scenes_names, res_type,
+                              should_plot, outfile):
     val_metrics_names, val_scenes_names, val_ref_renders_names, val_gpus_renders_names, \
-    val_implementations_names = valid_comp_parameters(
-        metrics_names,
-        scenes_names,
-        ref_renders_names,
-        gpus_renders_names)
+        val_implementations_names = valid_comp_parameters(
+            metrics_names,
+            scenes_names,
+            ref_renders_names,
+            gpus_renders_names)
 
-    dataframe_latex = make_latex_table(val_ref_renders_names, val_gpus_renders_names, val_metrics_names,
-                                       val_implementations_names, val_scenes_names, res_type)
+    dataframe_latex = make_table_output(val_ref_renders_names, val_gpus_renders_names, val_metrics_names,
+                                        val_implementations_names, val_scenes_names, res_type, should_plot)
 
-    output_comparisons(dataframe_latex, outfile)
+    if should_plot:
+        output_plot(dataframe_latex, outfile)
+    else:
+        output_comparisons(dataframe_latex, outfile)
 
 
 def parser_generate_comparison_image(image_args):
@@ -351,7 +379,7 @@ def parser_generate_comparison_image(image_args):
 
 def parser_generate_comparison_table(table_args):
     generate_comparison_table(table_args.metrics, table_args.reference, table_args.gpu, table_args.names,
-                              table_args.view, table_args.outfile)
+                              table_args.view, table_args.plot, table_args.outfile)
 
 
 def init_table_subparser(tableparser):
@@ -394,7 +422,6 @@ def init_table_subparser(tableparser):
         "--outfile",
         nargs="?",
         type=str,
-        default="out.tex",
         help="File to output latex table to"
     )
     tableparser.add_argument(
@@ -404,6 +431,13 @@ def init_table_subparser(tableparser):
         type=str,
         default=["psnr", "mse", "ssim", "nrmse"],
         help="Metrics to be calculated"
+    )
+    tableparser.add_argument(
+        "-p",
+        "--plot",
+        action=argparse.BooleanOptionalAction,
+        help="Plot output",
+        default=False
     )
 
 
