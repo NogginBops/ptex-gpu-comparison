@@ -97,7 +97,7 @@ def ref_gpus_lists(ref_images, gpus_images):
 
 
 def get_dataframe_parameters(implementation_names):
-    levels_names = ['Implementation', 'Scene']
+    levels_names = ["Implementation", "Metric"]
 
     return implementation_names, levels_names
 
@@ -106,11 +106,10 @@ def combine_res_dataframes(dataframes, implementations_names):
     implementation_names, levels_names = get_dataframe_parameters(implementations_names)
 
     combined_dataframe = pd.concat(dataframes, keys=implementation_names, names=levels_names, axis=1)
-    sorted_column_names = combined_dataframe.columns.tolist().sort(key=lambda x: x[1])
-    print(sorted_column_names)
-    alternating_combined_dataframe = combined_dataframe.reindex(sorted_column_names, axis=1)
+    swaplevel_dataframe = combined_dataframe.swaplevel(axis=1)
+    sorted_dataframe = swaplevel_dataframe.reindex(sorted(swaplevel_dataframe.columns), axis=1)
 
-    return alternating_combined_dataframe
+    return sorted_dataframe
 
 
 def gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names, implementations_names):
@@ -120,11 +119,7 @@ def gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names, imple
 
 
 def metrics_avg_dataframe(dataframe):
-    return dataframe.groupby(level='Implementation').mean()
-
-
-def single_metric_dataframe(dataframe):
-    return dataframe.iloc[:, 0].unstack().transpose()
+    return dataframe.mean().to_frame().transpose()
 
 
 def get_latex_table(dataframe):
@@ -132,6 +127,9 @@ def get_latex_table(dataframe):
 
 
 def get_plot(dataframe):
+    print(dataframe)
+
+    dataframe.columns = dataframe.columns.droplevel()
     dataframe["idx"] = dataframe.index
     dataframe["implementation1"] = dataframe.iloc[:, 0]
     dataframe["implementation2"] = dataframe.iloc[:, 1]
@@ -145,9 +143,7 @@ def get_plot(dataframe):
 
 
 def keyword_to_dataframe(dataframe, res_type="all"):
-    if res_type == "singlemetric":
-        return single_metric_dataframe(dataframe)
-    elif res_type == "metricsavg":
+    if res_type == "metricsavg":
         return metrics_avg_dataframe(dataframe)
     else:
         return dataframe
@@ -344,11 +340,17 @@ def valid_comp_parameters(metrics_names, scenes_names, ref_renders_names, gpus_r
 
 
 def output_plot(dataframe_plot, outfile="out.png"):
+    if outfile is None:
+        outfile = "out.png"
+
     plt.savefig(outfile)
     print("Output saved in", outfile)
 
 
 def output_comparisons(dataframe_latex, outfile="out.tex"):
+    if outfile is None:
+        outfile = "out.tex"
+
     print("Output saved in", outfile)
     print(dataframe_latex)
     write_table(dataframe_latex, outfile)
@@ -414,7 +416,7 @@ def init_table_subparser(tableparser):
         nargs="?",
         type=str,
         default="all",
-        choices=["singlemetric", "all", "metricsavg"],
+        choices=["all", "metricsavg"],
         help="What data to output"
     )
     tableparser.add_argument(
