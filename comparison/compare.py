@@ -134,10 +134,11 @@ def get_plot(dataframe):
     dataframe["implementation1"] = dataframe.iloc[:, 0]
     dataframe["implementation2"] = dataframe.iloc[:, 1]
 
-    ax = dataframe.plot.scatter(x="idx", y="implementation1", color="Blue", label=dataframe.iloc[:, 0].name)
-    dataframe.plot.scatter(x="idx", y="implementation2", color="Red", label=dataframe.iloc[:, 1].name, ax=ax)
+    ax = dataframe.plot.scatter(x="idx", y="implementation1", color="C0", label=dataframe.iloc[:, 0].name)
+    dataframe.plot.scatter(x="idx", y="implementation2",  color="C1", label=dataframe.iloc[:, 1].name, ax=ax)
     ax.vlines(x=dataframe.index, ymin=dataframe.iloc[:, 0], ymax=dataframe.iloc[:, 1])
     ax.set(xlabel="Scenarios", ylabel="Measured values")
+    ax.grid(axis='y')
 
     return ax
 
@@ -252,7 +253,7 @@ def img_ssim_diff(image1, image2):
     image1_gray = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
     image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 
-    (score, diff) = metrics.structural_similarity(image1_gray, image2_gray, full=True)
+    _, diff = metrics.structural_similarity(image1_gray, image2_gray, full=True)
 
     return diff
 
@@ -263,7 +264,7 @@ def img_diff_contours(image1, image2):
     image1_gray = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
     image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 
-    (score, diff) = metrics.structural_similarity(image1_gray, image2_gray, full=True)
+    score, diff = metrics.structural_similarity(image1_gray, image2_gray, full=True)
 
     diff = (diff * 255).astype("uint8")
 
@@ -284,7 +285,7 @@ def img_gray_pixel_diff(image1, image2):
 
 
 def img_pixel_diff(image1, image2):
-    return 3 * util.compare_images(image1, image2, method="diff")
+    return 100 * util.compare_images(image1, image2, method="diff")
 
 
 def img_checkerboard(image1, image2):
