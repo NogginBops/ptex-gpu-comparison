@@ -48,6 +48,6 @@ typedef struct {
 
 gl_ptex_textures extract_textures(Ptex::PtexTexture* tex);
 
-gl_ptex_data create_gl_texture_arrays(gl_ptex_textures textures, GLenum mag_filter, GLenum min_filter);
+gl_ptex_data create_gl_texture_arrays(const char* name, gl_ptex_textures textures, GLenum mag_filter, GLenum min_filter);
 
 #endif // !PTEX_UTILS_H

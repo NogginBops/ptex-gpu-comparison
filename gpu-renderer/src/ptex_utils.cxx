@@ -163,7 +163,7 @@ gl_ptex_textures extract_textures(Ptex::PtexTexture* tex) {
 	return result;
 }
 
-gl_ptex_data create_gl_texture_arrays(gl_ptex_textures textures, GLenum mag_filter, GLenum min_filter) {
+gl_ptex_data create_gl_texture_arrays(const char* name, gl_ptex_textures textures, GLenum mag_filter, GLenum min_filter) {
 	GLuint* gl_textures = alloc_array(GLuint, textures.num_resolutions);
 	glGenTextures(textures.num_resolutions, gl_textures);
 
@@ -271,7 +271,9 @@ gl_ptex_data create_gl_texture_arrays(gl_ptex_textures textures, GLenum mag_filt
 
 	if (has_KHR_debug)
 	{
-		glObjectLabel(GL_BUFFER, face_data_buffer, -1, "UBO: PTex");
+		char label[128];
+		sprintf(label, "UBO: %s", name);
+		glObjectLabel(GL_BUFFER, face_data_buffer, -1, label);
 	}
 
 	glBufferData(GL_UNIFORM_BUFFER, textures.num_faces * sizeof(TexIndex), face_indices, GL_STATIC_DRAW);

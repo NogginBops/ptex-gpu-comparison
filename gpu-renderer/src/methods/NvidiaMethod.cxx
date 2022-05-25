@@ -52,7 +52,8 @@ namespace Methods {
 		border_sampler = create_sampler("sampler: nvidia.border", border_desc);
 
 		int blockIndex = glGetUniformBlockIndex(ptex_program, "FaceDataUniform");
-		glUniformBlockBinding(ptex_program, blockIndex, 0);
+		if (blockIndex != -1)
+			glUniformBlockBinding(ptex_program, blockIndex, 0);
 
 		{
 			char name[32];

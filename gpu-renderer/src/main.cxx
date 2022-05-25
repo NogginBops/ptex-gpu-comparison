@@ -546,7 +546,7 @@ void add_model(const char* name, const char* model_path, const char* ptex_path, 
     meshes.add(mesh);
     mesh_vaos.add(mesh_vao);
     ptexTextures.add(ptex);
-    texturesGLData.add(create_gl_texture_arrays(extract_textures(ptex), GL_LINEAR, GL_LINEAR));
+    texturesGLData.add(create_gl_texture_arrays(name, extract_textures(ptex), GL_LINEAR, GL_LINEAR));
     mesh_model_matrix.add(model_mat);
 }
 
@@ -571,7 +571,7 @@ int main(int argv, char** argc)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-#if RELEASE
+#if !DEBUG
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_FALSE);
 #else
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
@@ -642,7 +642,7 @@ int main(int argv, char** argc)
 
     if (has_KHR_debug)
     {
-#if !(RELEASE)
+#if DEBUG
         glDebugMessageCallback(GLDebugCallback, NULL);
         glEnable(GL_DEBUG_OUTPUT);
         glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);

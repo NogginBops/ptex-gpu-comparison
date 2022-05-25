@@ -133,10 +133,10 @@ vec3 ptexture(sampler2DArray tex[NUM_TEX], vec2 uv, int faceID)
     uint neighbor2_id = data.neighbor23Indices & 0xFFFFu;
     uint neighbor3_id = data.neighbor23Indices >> 16;
 
-    uint n0_transform = (face_data[neighbor0_id].neighbor0123Transform >> 0 ) & 0xFFu;
-    uint n1_transform = (face_data[neighbor0_id].neighbor0123Transform >> 8 ) & 0xFFu;
-    uint n2_transform = (face_data[neighbor0_id].neighbor0123Transform >> 16) & 0xFFu;
-    uint n3_transform = (face_data[neighbor0_id].neighbor0123Transform >> 24) & 0xFFu;
+    uint n0_transform = (data.neighbor0123Transform >> 0 ) & 0xFFu;
+    uint n1_transform = (data.neighbor0123Transform >> 8 ) & 0xFFu;
+    uint n2_transform = (data.neighbor0123Transform >> 16) & 0xFFu;
+    uint n3_transform = (data.neighbor0123Transform >> 24) & 0xFFu;
     
     vec2 n0_uv = neighborTransforms[n0_transform] * vec3(uv, 1);
     vec2 n1_uv = neighborTransforms[n1_transform] * vec3(uv, 1);
