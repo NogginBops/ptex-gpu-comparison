@@ -33,10 +33,10 @@ teapotzoomed & 0.518601 & 1.189553 & 0.003578 & 0.005419 & 50.982474 & 47.376965
 \end{tabular}
 
 ### Example 3
-**Flag -p: generate plot.** Compare **'Intel'** with images in **'Intel'** to **'Hybrid'** with images in **'Hybrid'**, using metric **ssim**. Output to out.png (default). 
-> ```python compare.py table Nvidia -g Intel Intel -g Hybrid Hybrid -m ssim -p```
+**Flag -p: generate plot.** Compare **'Intel'** with images in **'Intel'** to **'Hybrid'** with images in **'Hybrid'**, using metric **ssim**. Output to **plot.png**. 
+> ```python compare.py table Nvidia -g Intel Intel -g Hybrid Hybrid -m ssim -p -o plot.png```
 
 Output:
 
-![](out.png)
+![](plot.png)
 
