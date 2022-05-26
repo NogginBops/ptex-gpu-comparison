@@ -106,6 +106,8 @@ layout(std140) uniform FaceDataUniform {
 uniform sampler2DArray aTexBorder[NUM_TEX];
 uniform sampler2DArray aTexClamp[NUM_TEX];
 
+uniform bool visualizeHueristic;
+
 vec3 hsv2rgb(vec3 c)
 {
     vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
@@ -120,10 +122,10 @@ vec4 ptexture_single(sampler2DArray tex[NUM_TEX], vec2 uv, uint texIDsliceID)
 
     vec4 color = texture(tex[texID], vec3(uv, sliceID));
 
-    vec2 wUV = fwidth(UV);
-    vec3 size = textureSize(tex[texID], 0);
+    //vec2 wUV = fwidth(UV);
+    //vec3 size = textureSize(tex[texID], 0);
 
-    vec2 m = step(vec2(1, 1), wUV * size.xy);
+    //vec2 m = step(vec2(1, 1), wUV * size.xy);
     //color += mix(vec4(1, 0, 0, 0), vec4(0, 0, 1, 0), max(m.x, m.y));
 
     return color;
@@ -148,15 +150,19 @@ vec3 ptexture_hybrid(sampler2DArray texBorder[NUM_TEX], sampler2DArray texClamp[
 
     // Figure out if we will be applying a min or mag filter
     uint texID = data.texIDsliceID & 0xFFFFu;
-    vec2 filterSize = fwidth(UV) * textureSize(texBorder[texID], 0).xy;
-    float a = smoothstep(0, 1, filterSize.x) + smoothstep(0, 1, filterSize.y);
-    //return vec3(filterSize.x, filterSize.y, filterSize.x > 1 ? 1 : 0);
-    if (a > 1.5)
+    vec2 texelUV = UV * textureSize(texBorder[texID], 0).xy;
+    vec2 filterWidth = fwidth(texelUV);
+    float totalChange = filterWidth.x + filterWidth.y;
+    vec2 dUVdx = dFdx(texelUV);
+    vec2 dUVdy = dFdy(texelUV);
+    float area = dUVdx.x * dUVdy.y - dUVdx.y * dUVdy.x;
+    if (area > 0.1)
     {
         // This means that we are applying a min filter in at least one axis
         // With MSAA this means we can get away with only one texture sample.
-
-        return ptexture_intel(texBorder, texClamp, uv, data.texIDsliceID);
+        vec3 color = ptexture_intel(texBorder, texClamp, uv, data.texIDsliceID);
+        if (visualizeHueristic) color += vec3(0, 0, 1);
+        return color;
     }
     else
     {
@@ -186,7 +192,11 @@ vec3 ptexture_hybrid(sampler2DArray texBorder[NUM_TEX], sampler2DArray texClamp[
         if (neighbor2_id != 0xFFFFu) color += ptexture_single(texBorder, n2_uv, face_data[neighbor2_id].texIDsliceID);
         if (neighbor3_id != 0xFFFFu) color += ptexture_single(texBorder, n3_uv, face_data[neighbor3_id].texIDsliceID);
 
-        return color.rgb / color.a;
+        color.rgb = color.rgb / color.a;
+
+        if (visualizeHueristic) color.rgb += vec3(0, 0.5, 0);
+
+        return color.rgb;
     }
 }
 

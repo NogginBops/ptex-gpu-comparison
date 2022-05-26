@@ -343,6 +343,8 @@ void GLFWScrollCallback(GLFWwindow* window, double xoffset, double yoffset)
     g_camera.distance_t = float_clamp(g_camera.distance_t, 0, 1);
 
     g_camera.distance = float_eerp(CAMERA_MIN_DIST, CAMERA_MAX_DIST, g_camera.distance_t);
+
+    current_viewpoint = -1;
 }
 
 void check_u8(const char* label, uint8_t ref, uint8_t res, float original)
@@ -591,7 +593,7 @@ int main(int argv, char** argc)
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_FALSE);
     glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(800, 800, "Test title", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1920, 1080, "Test title", NULL, NULL);
     if (window == NULL)
     {
         printf("Failed to create GLFW window\n");
@@ -946,6 +948,8 @@ int main(int argv, char** argc)
                             Methods::hybrid.resolve_framebuffer.width,
                             Methods::hybrid.resolve_framebuffer.height);
                     }
+
+                    ImGui::Checkbox("Visualize hueristic", &Methods::hybrid.visualize_hueristic);
                     break;
                 }
                 default:
@@ -1092,6 +1096,7 @@ int main(int argv, char** argc)
                 0, 0, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height,
                 GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
+            Methods::hybrid.visualize_hueristic = false;
             Methods::hybrid.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             // resolve hybrid MS buffer
             glBindFramebuffer(GL_READ_FRAMEBUFFER, Methods::hybrid.ms_framebuffer.framebuffer);
@@ -1108,6 +1113,20 @@ int main(int argv, char** argc)
             rgb8_t* intel_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::intel.resolve_color_framebuffer, GL_COLOR_ATTACHMENT0);
             rgb8_t* hybrid_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::hybrid.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
             rgb8_t* cpu_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::cpu.cpu_result_framebuffer, GL_COLOR_ATTACHMENT0);
+
+            // Render hybrid visualization
+            Methods::hybrid.visualize_hueristic = true;
+            Methods::hybrid.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
+            // resolve hybrid MS buffer
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, Methods::hybrid.ms_framebuffer.framebuffer);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Methods::hybrid.resolve_framebuffer.framebuffer);
+            glBlitFramebuffer(
+                0, 0, Methods::hybrid.ms_framebuffer.width, Methods::hybrid.ms_framebuffer.height,
+                0, 0, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height,
+                GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+            rgb8_t* hybrid_visualization_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::hybrid.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
+
 
             char filename[128];
             const char* viewpoint_name = current_viewpoint == -1 ? "no_viewpoint" : viewpoint_names[current_viewpoint];
@@ -1130,6 +1149,9 @@ int main(int argv, char** argc)
             
             sprintf(filename, "screenshots/%s/cpu.png", viewpoint_name);
             stbi_write_png(filename, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height, 3, cpu_data, Methods::cpu.cpu_result_framebuffer.width * 3);
+
+            sprintf(filename, "screenshots/%s/hybrid_viz.png", viewpoint_name);
+            stbi_write_png(filename, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height, 3, hybrid_visualization_data, Methods::hybrid.resolve_framebuffer.width * 3);
 
             free(nvidia_data);
             free(intel_data);

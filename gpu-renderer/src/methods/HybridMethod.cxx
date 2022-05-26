@@ -120,6 +120,7 @@ namespace Methods {
 		glBindVertexArray(vao);
 
 		uniform_mat4(ptex_program, "mvp", &mvp);
+		uniform_1i(ptex_program, "visualizeHueristic", visualize_hueristic);
 
 		glUseProgram(ptex_program);
 

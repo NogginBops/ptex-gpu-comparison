@@ -77,6 +77,8 @@ namespace Methods {
 		sampler_t border_sampler;
 		sampler_t clamp_sampler;
 
+		bool visualize_hueristic;
+
 		void init(int width, int height, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
 		void render(GLuint vao, int vertex_count, gl_ptex_data ptex_data, mat4_t mvp, vec3_t bg_color);
 		void resize_buffers(int width, int height);
