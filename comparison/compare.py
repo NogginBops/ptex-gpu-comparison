@@ -119,7 +119,7 @@ def gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names, imple
 
 
 def metrics_avg_dataframe(dataframe):
-    return dataframe.mean().to_frame().transpose()
+    return dataframe.mean().to_frame()
 
 
 def get_latex_table(dataframe):
