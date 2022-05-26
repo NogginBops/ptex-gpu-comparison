@@ -496,6 +496,18 @@ void* download_framebuffer(framebuffer_t* framebuffer, GLenum attachment) {
     return buffer;
 }
 
+void* download_rgb8_framebuffer(framebuffer_t* framebuffer, GLenum attachment) {
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer->framebuffer);
+
+    int pixels = framebuffer->width * framebuffer->height;
+
+    glReadBuffer(attachment);
+    void* buffer = malloc(pixels * sizeof(unsigned char) * 3);
+    glReadPixels(0, 0, framebuffer->width, framebuffer->height, GL_RGB, GL_UNSIGNED_BYTE, buffer);
+
+    return buffer;
+}
+
 #ifdef __APPLE__
     #define ASSETS_PATH "../assets"
 #else
@@ -823,6 +835,23 @@ int main(int argv, char** argc)
                             Methods::nvidia.framebuffer.width,
                             Methods::nvidia.framebuffer.height);
                     }
+
+                    bool isRGB8 = Methods::nvidia.framebuffer_desc.color_attachments[0].internal_format == GL_RGB8;
+                    if (ImGui::Checkbox("RGB8 Output", &isRGB8)) {
+                        if (isRGB8)
+                        {
+                            Methods::nvidia.framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
+                        }
+                        else {
+                            Methods::nvidia.framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
+                        }
+
+                        recreate_framebuffer(
+                            &Methods::nvidia.framebuffer,
+                            Methods::nvidia.framebuffer_desc,
+                            Methods::nvidia.framebuffer.width,
+                            Methods::nvidia.framebuffer.height);
+                    }
                     break;
                 }
                 case Methods::Methods::intel:
@@ -845,6 +874,31 @@ int main(int argv, char** argc)
                             Methods::intel.ms_color_framebuffer.width, 
                             Methods::intel.ms_color_framebuffer.height);
                     }
+
+                    bool isRGB8 = Methods::intel.ms_color_framebuffer_desc.color_attachments[0].internal_format == GL_RGB8;
+                    if (ImGui::Checkbox("RGB8 Output", &isRGB8)) {
+                        if (isRGB8)
+                        {
+                            Methods::intel.ms_color_framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
+                            Methods::intel.resolve_color_framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
+                        }
+                        else {
+                            Methods::intel.ms_color_framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
+                            Methods::intel.resolve_color_framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
+                        }
+
+                        recreate_framebuffer(
+                            &Methods::intel.ms_color_framebuffer,
+                            Methods::intel.ms_color_framebuffer_desc,
+                            Methods::intel.ms_color_framebuffer.width,
+                            Methods::intel.ms_color_framebuffer.height);
+
+                        recreate_framebuffer(
+                            &Methods::intel.resolve_color_framebuffer,
+                            Methods::intel.resolve_color_framebuffer_desc,
+                            Methods::intel.resolve_color_framebuffer.width,
+                            Methods::intel.resolve_color_framebuffer.height);
+                    }
                     break;
                 }
                 case Methods::Methods::hybrid:
@@ -866,6 +920,31 @@ int main(int argv, char** argc)
                             Methods::hybrid.ms_framebuffer_desc,
                             Methods::hybrid.ms_framebuffer.width,
                             Methods::hybrid.ms_framebuffer.height);
+                    }
+
+                    bool isRGB8 = Methods::hybrid.ms_framebuffer_desc.color_attachments[0].internal_format == GL_RGB8;
+                    if (ImGui::Checkbox("RGB8 Output", &isRGB8)) {
+                        if (isRGB8)
+                        {
+                            Methods::hybrid.ms_framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
+                            Methods::hybrid.resolve_framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
+                        }
+                        else {
+                            Methods::hybrid.ms_framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
+                            Methods::hybrid.resolve_framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
+                        }
+
+                        recreate_framebuffer(
+                            &Methods::hybrid.ms_framebuffer,
+                            Methods::hybrid.ms_framebuffer_desc,
+                            Methods::hybrid.ms_framebuffer.width,
+                            Methods::hybrid.ms_framebuffer.height);
+
+                        recreate_framebuffer(
+                            &Methods::hybrid.resolve_framebuffer,
+                            Methods::hybrid.resolve_framebuffer_desc,
+                            Methods::hybrid.resolve_framebuffer.width,
+                            Methods::hybrid.resolve_framebuffer.height);
                     }
                     break;
                 }
@@ -1025,19 +1104,10 @@ int main(int argv, char** argc)
             Methods::cpu.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, ptexTextures[current_mesh], current_filter, mvp, bg_color);
 
             // Then we will download all of the final pictures.
-            // We also need to resolve the intel MS framebuffer.
-            
-            vec3_t* nvidia_data = (vec3_t*)download_framebuffer(&Methods::nvidia.framebuffer, GL_COLOR_ATTACHMENT0);
-            vec3_t* intel_data = (vec3_t*)download_framebuffer(&Methods::intel.resolve_color_framebuffer, GL_COLOR_ATTACHMENT0);
-            vec3_t* hybrid_data = (vec3_t*)download_framebuffer(&Methods::hybrid.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
-            vec3_t* cpu_data = (vec3_t*)download_framebuffer(&Methods::cpu.cpu_result_framebuffer, GL_COLOR_ATTACHMENT0);
-
-            stbi_flip_vertically_on_write(true);
-
-            rgb8_t* nvidia_rgb8_data = vec3_buffer_to_rgb8(nvidia_data, Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height);
-            rgb8_t* intel_rgb8_data = vec3_buffer_to_rgb8(intel_data, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height);
-            rgb8_t* hybrid_rgb8_data = vec3_buffer_to_rgb8(hybrid_data, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height);
-            rgb8_t* cpu_rgb8_data = vec3_buffer_to_rgb8(cpu_data, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height);
+            rgb8_t* nvidia_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::nvidia.framebuffer, GL_COLOR_ATTACHMENT0);
+            rgb8_t* intel_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::intel.resolve_color_framebuffer, GL_COLOR_ATTACHMENT0);
+            rgb8_t* hybrid_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::hybrid.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
+            rgb8_t* cpu_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::cpu.cpu_result_framebuffer, GL_COLOR_ATTACHMENT0);
 
             char filename[128];
             const char* viewpoint_name = current_viewpoint == -1 ? "no_viewpoint" : viewpoint_names[current_viewpoint];
@@ -1047,27 +1117,24 @@ int main(int argv, char** argc)
             sprintf(filename, "screenshots/%s", viewpoint_name);
             create_directory(filename);
 
+            stbi_flip_vertically_on_write(true);
+
             sprintf(filename, "screenshots/%s/nvidia.png", viewpoint_name);
-            stbi_write_png(filename, Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height, 3, nvidia_rgb8_data, Methods::nvidia.framebuffer.width * 3);
+            stbi_write_png(filename, Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height, 3, nvidia_data, Methods::nvidia.framebuffer.width * 3);
             
             sprintf(filename, "screenshots/%s/intel.png", viewpoint_name);
-            stbi_write_png(filename, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height, 3, intel_rgb8_data, Methods::intel.resolve_color_framebuffer.width * 3);
+            stbi_write_png(filename, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height, 3, intel_data, Methods::intel.resolve_color_framebuffer.width * 3);
             
             sprintf(filename, "screenshots/%s/hybrid.png", viewpoint_name);
-            stbi_write_png(filename, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height, 3, hybrid_rgb8_data, Methods::hybrid.resolve_framebuffer.width * 3);
+            stbi_write_png(filename, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height, 3, hybrid_data, Methods::hybrid.resolve_framebuffer.width * 3);
             
             sprintf(filename, "screenshots/%s/cpu.png", viewpoint_name);
-            stbi_write_png(filename, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height, 3, cpu_rgb8_data, Methods::cpu.cpu_result_framebuffer.width * 3);
+            stbi_write_png(filename, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height, 3, cpu_data, Methods::cpu.cpu_result_framebuffer.width * 3);
 
             free(nvidia_data);
             free(intel_data);
             free(hybrid_data);
             free(cpu_data);
-
-            free(nvidia_rgb8_data);
-            free(intel_rgb8_data);
-            free(hybrid_rgb8_data);
-            free(cpu_rgb8_data);
 
             takeScreenshot = false;
         }
