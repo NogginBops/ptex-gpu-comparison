@@ -593,7 +593,7 @@ int main(int argv, char** argc)
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_FALSE);
     glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(1920, 1080, "Test title", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(800, 800, "GPU Ptex comparison", NULL, NULL);
     if (window == NULL)
     {
         printf("Failed to create GLFW window\n");
