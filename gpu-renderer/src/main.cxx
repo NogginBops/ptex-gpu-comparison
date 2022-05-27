@@ -39,7 +39,7 @@
 
 bool g_show_imgui;
 
-Methods::Methods current_rendering_method = Methods::Methods::nvidia;
+Methods::Methods current_rendering_method = Methods::Methods::reduced_traverse;
 Methods::Methods prev_rendering_method;
 
 texture_t g_tex_test;
@@ -211,7 +211,7 @@ void GLFWFrambufferSizeCallback(GLFWwindow* window, int width, int height)
     Methods::cpu.resize_buffers(width, height);
     Methods::nvidia.resize_buffers(width, height);
     Methods::intel.resize_buffers(width, height);
-    Methods::hybrid.resize_buffers(width, height);
+    Methods::reducedTraverse.resize_buffers(width, height);
 
     g_camera.aspect = width / (float)height;
 
@@ -903,53 +903,43 @@ int main(int argv, char** argc)
                     }
                     break;
                 }
-                case Methods::Methods::hybrid:
+                case Methods::Methods::reduced_traverse:
                 {
-                    int curr_aniso = Methods::hybrid.border_sampler.desc.max_anisotropy;
+                    int curr_aniso = Methods::reducedTraverse.border_sampler.desc.max_anisotropy;
                     if (ImGui::SliderInt("Max Anisotropy", &curr_aniso, 1, 16))
                     {
-                        glSamplerParameterf(Methods::hybrid.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
-                        glSamplerParameterf(Methods::hybrid.clamp_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
-                        Methods::hybrid.border_sampler.desc.max_anisotropy = curr_aniso;
-                        Methods::hybrid.clamp_sampler.desc.max_anisotropy = curr_aniso;
+                        glSamplerParameterf(Methods::reducedTraverse.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
+                        Methods::reducedTraverse.border_sampler.desc.max_anisotropy = curr_aniso;
                     }
 
-                    if (ImGui::SliderInt("MSAA", &Methods::hybrid.ms_framebuffer_desc.samples, 1, 16))
+                    if (ImGui::SliderInt("MSAA", &Methods::reducedTraverse.framebuffer_desc.samples, 1, 16))
                     {
                         // Recreate the framebuffer with the new number of samples
                         recreate_framebuffer(
-                            &Methods::hybrid.ms_framebuffer,
-                            Methods::hybrid.ms_framebuffer_desc,
-                            Methods::hybrid.ms_framebuffer.width,
-                            Methods::hybrid.ms_framebuffer.height);
+                            &Methods::reducedTraverse.framebuffer,
+                            Methods::reducedTraverse.framebuffer_desc,
+                            Methods::reducedTraverse.framebuffer.width,
+                            Methods::reducedTraverse.framebuffer.height);
                     }
 
-                    bool isRGB8 = Methods::hybrid.ms_framebuffer_desc.color_attachments[0].internal_format == GL_RGB8;
+                    bool isRGB8 = Methods::reducedTraverse.framebuffer_desc.color_attachments[0].internal_format == GL_RGB8;
                     if (ImGui::Checkbox("RGB8 Output", &isRGB8)) {
                         if (isRGB8)
                         {
-                            Methods::hybrid.ms_framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
-                            Methods::hybrid.resolve_framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
+                            Methods::reducedTraverse.framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
                         }
                         else {
-                            Methods::hybrid.ms_framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
-                            Methods::hybrid.resolve_framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
+                            Methods::reducedTraverse.framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
                         }
 
                         recreate_framebuffer(
-                            &Methods::hybrid.ms_framebuffer,
-                            Methods::hybrid.ms_framebuffer_desc,
-                            Methods::hybrid.ms_framebuffer.width,
-                            Methods::hybrid.ms_framebuffer.height);
-
-                        recreate_framebuffer(
-                            &Methods::hybrid.resolve_framebuffer,
-                            Methods::hybrid.resolve_framebuffer_desc,
-                            Methods::hybrid.resolve_framebuffer.width,
-                            Methods::hybrid.resolve_framebuffer.height);
+                            &Methods::reducedTraverse.framebuffer,
+                            Methods::reducedTraverse.framebuffer_desc,
+                            Methods::reducedTraverse.framebuffer.width,
+                            Methods::reducedTraverse.framebuffer.height);
                     }
 
-                    ImGui::Checkbox("Visualize hueristic", &Methods::hybrid.visualize_hueristic);
+                    ImGui::Checkbox("Visualize", &Methods::reducedTraverse.visualize);
                     break;
                 }
                 default:
@@ -1096,36 +1086,22 @@ int main(int argv, char** argc)
                 0, 0, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height,
                 GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-            Methods::hybrid.visualize_hueristic = false;
-            Methods::hybrid.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
-            // resolve hybrid MS buffer
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, Methods::hybrid.ms_framebuffer.framebuffer);
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Methods::hybrid.resolve_framebuffer.framebuffer);
-            glBlitFramebuffer(
-                0, 0, Methods::hybrid.ms_framebuffer.width, Methods::hybrid.ms_framebuffer.height,
-                0, 0, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height,
-                GL_COLOR_BUFFER_BIT, GL_NEAREST);
-
+            Methods::reducedTraverse.visualize = false;
+            Methods::reducedTraverse.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
+            
             Methods::cpu.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, ptexTextures[current_mesh], current_filter, mvp, bg_color);
 
             // Then we will download all of the final pictures.
             rgb8_t* nvidia_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::nvidia.framebuffer, GL_COLOR_ATTACHMENT0);
             rgb8_t* intel_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::intel.resolve_color_framebuffer, GL_COLOR_ATTACHMENT0);
-            rgb8_t* hybrid_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::hybrid.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
+            rgb8_t* reduced_traverse_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::reducedTraverse.framebuffer, GL_COLOR_ATTACHMENT0);
             rgb8_t* cpu_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::cpu.cpu_result_framebuffer, GL_COLOR_ATTACHMENT0);
 
-            // Render hybrid visualization
-            Methods::hybrid.visualize_hueristic = true;
-            Methods::hybrid.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
-            // resolve hybrid MS buffer
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, Methods::hybrid.ms_framebuffer.framebuffer);
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Methods::hybrid.resolve_framebuffer.framebuffer);
-            glBlitFramebuffer(
-                0, 0, Methods::hybrid.ms_framebuffer.width, Methods::hybrid.ms_framebuffer.height,
-                0, 0, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height,
-                GL_COLOR_BUFFER_BIT, GL_NEAREST);
-
-            rgb8_t* hybrid_visualization_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::hybrid.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
+            // Render reduced traverse visualization
+            Methods::reducedTraverse.visualize = true;
+            Methods::reducedTraverse.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
+            
+            rgb8_t* reduced_traverse_visualization_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::reducedTraverse.framebuffer, GL_COLOR_ATTACHMENT0);
 
 
             char filename[128];
@@ -1144,18 +1120,19 @@ int main(int argv, char** argc)
             sprintf(filename, "screenshots/%s/intel.png", viewpoint_name);
             stbi_write_png(filename, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height, 3, intel_data, Methods::intel.resolve_color_framebuffer.width * 3);
             
-            sprintf(filename, "screenshots/%s/hybrid.png", viewpoint_name);
-            stbi_write_png(filename, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height, 3, hybrid_data, Methods::hybrid.resolve_framebuffer.width * 3);
+            sprintf(filename, "screenshots/%s/reduced_traverse.png", viewpoint_name);
+            stbi_write_png(filename, Methods::reducedTraverse.framebuffer.width, Methods::reducedTraverse.framebuffer.height, 3, reduced_traverse_data, Methods::reducedTraverse.framebuffer.width * 3);
             
             sprintf(filename, "screenshots/%s/cpu.png", viewpoint_name);
             stbi_write_png(filename, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height, 3, cpu_data, Methods::cpu.cpu_result_framebuffer.width * 3);
 
-            sprintf(filename, "screenshots/%s/hybrid_viz.png", viewpoint_name);
-            stbi_write_png(filename, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height, 3, hybrid_visualization_data, Methods::hybrid.resolve_framebuffer.width * 3);
+            sprintf(filename, "screenshots/%s/reduced_traverse_viz.png", viewpoint_name);
+            stbi_write_png(filename, Methods::reducedTraverse.framebuffer.width, Methods::reducedTraverse.framebuffer.height, 3, reduced_traverse_visualization_data, Methods::reducedTraverse.framebuffer.width * 3);
 
             free(nvidia_data);
             free(intel_data);
-            free(hybrid_data);
+            free(reduced_traverse_data);
+            free(reduced_traverse_visualization_data);
             free(cpu_data);
 
             takeScreenshot = false;
@@ -1189,8 +1166,8 @@ int main(int argv, char** argc)
             Methods::intel.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             break;
 
-        case Methods::Methods::hybrid:
-            Methods::hybrid.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
+        case Methods::Methods::reduced_traverse:
+            Methods::reducedTraverse.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             break;
 
         default:
@@ -1218,8 +1195,8 @@ int main(int argv, char** argc)
             color_output_framebuffer = Methods::intel.ms_color_framebuffer;
             break;
 
-        case Methods::Methods::hybrid:
-            color_output_framebuffer = Methods::hybrid.ms_framebuffer;
+        case Methods::Methods::reduced_traverse:
+            color_output_framebuffer = Methods::reducedTraverse.framebuffer;
             break;
 
         default:

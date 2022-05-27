@@ -37,7 +37,7 @@ set(SOURCES
     src/methods/CpuMethod.cxx
     src/methods/NvidiaMethod.cxx
     src/methods/IntelMethod.cxx
-    src/methods/HybridMethod.cxx
+    src/methods/ReducedTraverseMethod.cxx
     src/profiler.cxx
 )
 

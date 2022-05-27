@@ -10,7 +10,7 @@ namespace Methods {
 		cpu = 0,
 		nvidia = 1,
 		intel = 2,
-		hybrid = 3,
+		reduced_traverse = 3,
 
 		last,
 	};
@@ -64,20 +64,15 @@ namespace Methods {
 		void resize_buffers(int width, int height);
 	};
 	
-	struct HybridMethod {
-		framebuffer_desc ms_framebuffer_desc;
-		framebuffer_t ms_framebuffer;
-
-		// Used when taking screenshots.
-		framebuffer_desc resolve_framebuffer_desc;
-		framebuffer_t resolve_framebuffer;
+	struct ReducedTraverseMethod {
+		framebuffer_desc framebuffer_desc;
+		framebuffer_t framebuffer;
 
 		GLuint ptex_program;
 
 		sampler_t border_sampler;
-		sampler_t clamp_sampler;
-
-		bool visualize_hueristic;
+		
+		bool visualize;
 
 		void init(int width, int height, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
 		void render(GLuint vao, int vertex_count, gl_ptex_data ptex_data, mat4_t mvp, vec3_t bg_color);
@@ -87,7 +82,7 @@ namespace Methods {
 	extern CpuMethod cpu;
 	extern NvidiaMethod nvidia;
 	extern IntelMethod intel;
-	extern HybridMethod hybrid;
+	extern ReducedTraverseMethod reducedTraverse;
 
 	void init_methods(int width, int height, GLenum mag_filter, GLenum min_filter, int max_anisotropy);
 }
