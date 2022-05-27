@@ -133,20 +133,20 @@ vec3 ptexture(sampler2DArray tex[NUM_TEX], vec2 uv, int faceID)
     uint neighbor2_id = data.neighbor23Indices & 0xFFFFu;
     uint neighbor3_id = data.neighbor23Indices >> 16;
 
-    uint n0_transform = (face_data[neighbor0_id].neighbor0123Transform >> 0 ) & 0xFFu;
-    uint n1_transform = (face_data[neighbor0_id].neighbor0123Transform >> 8 ) & 0xFFu;
-    uint n2_transform = (face_data[neighbor0_id].neighbor0123Transform >> 16) & 0xFFu;
-    uint n3_transform = (face_data[neighbor0_id].neighbor0123Transform >> 24) & 0xFFu;
+    uint n0_transform = (data.neighbor0123Transform >> 0 ) & 0xFFu;
+    uint n1_transform = (data.neighbor0123Transform >> 8 ) & 0xFFu;
+    uint n2_transform = (data.neighbor0123Transform >> 16) & 0xFFu;
+    uint n3_transform = (data.neighbor0123Transform >> 24) & 0xFFu;
     
     vec2 n0_uv = neighborTransforms[n0_transform] * vec3(uv, 1);
     vec2 n1_uv = neighborTransforms[n1_transform] * vec3(uv, 1);
     vec2 n2_uv = neighborTransforms[n2_transform] * vec3(uv, 1);
     vec2 n3_uv = neighborTransforms[n3_transform] * vec3(uv, 1);
 
-    color += ptexture_single(tex, n0_uv, face_data[neighbor0_id].texIDsliceID);
-    color += ptexture_single(tex, n1_uv, face_data[neighbor1_id].texIDsliceID);
-    color += ptexture_single(tex, n2_uv, face_data[neighbor2_id].texIDsliceID);
-    color += ptexture_single(tex, n3_uv, face_data[neighbor3_id].texIDsliceID);
+    if (neighbor0_id != 0xFFFFu) color += ptexture_single(tex, n0_uv, face_data[neighbor0_id].texIDsliceID);
+    if (neighbor1_id != 0xFFFFu) color += ptexture_single(tex, n1_uv, face_data[neighbor1_id].texIDsliceID);
+    if (neighbor2_id != 0xFFFFu) color += ptexture_single(tex, n2_uv, face_data[neighbor2_id].texIDsliceID);
+    if (neighbor3_id != 0xFFFFu) color += ptexture_single(tex, n3_uv, face_data[neighbor3_id].texIDsliceID);
 
     return color.rgb / color.a;
 }

@@ -76,7 +76,7 @@ namespace Methods {
 		{
 			color_attachment_desc color_desc = {
 				"Attachemnt: cpu_result.color (RGB32F)",
-				GL_RGB32F,
+				GL_RGB8,
 				GL_RGB,
 				GL_FLOAT,
 				GL_REPEAT, GL_REPEAT,

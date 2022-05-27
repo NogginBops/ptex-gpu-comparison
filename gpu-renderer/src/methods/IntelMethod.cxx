@@ -11,7 +11,7 @@ namespace Methods {
         {
             color_attachment_desc color_desc = {
                 "Attachment: intel.color (RGB32F_MS)",
-                GL_RGB32F,
+                GL_RGB8,
                 GL_RGB,
                 GL_FLOAT,
                 GL_REPEAT, GL_REPEAT,
@@ -46,7 +46,7 @@ namespace Methods {
         {
             color_attachment_desc color_desc = {
                 "Attachment: intel_resolve.color (RGB32F)",
-                GL_RGB32F,
+                GL_RGB8,
                 GL_RGB,
                 GL_FLOAT,
                 GL_REPEAT, GL_REPEAT,

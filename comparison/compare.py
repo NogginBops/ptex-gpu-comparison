@@ -1,17 +1,14 @@
 import pandas as pd
 import argparse
-from skimage import io
-from skimage import metrics
-from skimage import util
+from skimage import metrics, io, util, color, restoration
 from os import listdir
 from os.path import isfile, join
 import matplotlib
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from skimage import color
+from matplotlib import pyplot as plt, gridspec as gridspec
 import numpy as np
 import cv2
 import re
+import pywt
 
 matplotlib.use("pgf")
 matplotlib.rcParams.update({
@@ -28,6 +25,13 @@ def psnr(ref, res):
 
 def mse(ref, res):
     return metrics.mean_squared_error(ref, res)
+
+
+def cwssim(ref, res):
+    ref_cw = restoration.denoise_wavelet(ref, wavelet='cmor')
+    res_cw = restoration.denoise_wavelet(res, wavelet='cmor')
+
+    return metrics.structural_similarity(ref_cw, res_cw, channel_axis=2)
 
 
 def ssim(ref, res):
@@ -77,7 +81,9 @@ def ref_gpu_res(comp_metrics, img_pairs):
 
 
 def ref_gpu_dataframe(img_pairs, comp_metrics, scenes_names):
-    return pd.DataFrame(ref_gpu_res(comp_metrics, img_pairs), index=scenes_names)
+    metric_names_upper = [name.upper() for name in comp_metrics]
+
+    return pd.DataFrame(ref_gpu_res(comp_metrics, img_pairs), index=scenes_names, columns=metric_names_upper)
 
 
 def ref_gpu_dataframes(ref_images, gpus_images, comp_metrics, scenes_names):
@@ -90,54 +96,55 @@ def ref_gpus_lists(ref_images, gpus_images):
     return [zip(ref_images, gpu_images) for gpu_images in gpus_images]
 
 
-def get_dataframe_parameters(comp_metrics, implementation_names):
-    metric_names = [name.upper() for name in comp_metrics]
-    levels_names = ['Implementation', 'Scene']
+def get_dataframe_parameters(implementation_names):
+    levels_names = ["Implementation", "Metric"]
 
-    return metric_names, implementation_names, levels_names
+    return implementation_names, levels_names
 
 
-def combine_res_dataframes(dataframes, comp_metrics, implementations_names):
-    metric_names, implementation_names, levels_names = get_dataframe_parameters(comp_metrics, implementations_names)
+def combine_res_dataframes(dataframes, implementations_names):
+    implementation_names, levels_names = get_dataframe_parameters(implementations_names)
 
-    combined_dataframe = pd.concat(dataframes, keys=implementation_names, names=levels_names)
-    combined_dataframe.columns = metric_names
+    combined_dataframe = pd.concat(dataframes, keys=implementation_names, names=levels_names, axis=1)
+    swaplevel_dataframe = combined_dataframe.swaplevel(axis=1)
+    sorted_dataframe = swaplevel_dataframe.reindex(sorted(swaplevel_dataframe.columns), axis=1)
 
-    return combined_dataframe
+    return sorted_dataframe
 
 
 def gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names, implementations_names):
     dataframes = ref_gpu_dataframes(ref_images, gpus_images, comp_metrics, scenes_names)
 
-    return combine_res_dataframes(dataframes, comp_metrics, implementations_names)
+    return combine_res_dataframes(dataframes, implementations_names)
 
 
 def metrics_avg_dataframe(dataframe):
-    return dataframe.groupby(level='Implementation').mean()
-
-
-def single_metric_dataframe(dataframe):
-    return dataframe.iloc[:, 0].unstack()
+    return dataframe.mean().to_frame()
 
 
 def get_latex_table(dataframe):
     return dataframe.style.to_latex(hrules=True)
 
 
-def make_latex_table(ref_renders_names, gpus_renders_names, comp_metrics, implementations_names, scenes_names,
-                     res_type):
-    ref_images, gpus_images = load_images(ref_renders_names, gpus_renders_names)
-    dataframe = gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names, implementations_names)
-    requested_dataframe = keyword_to_dataframe(dataframe, res_type)
-    dataframe_latex = get_latex_table(requested_dataframe)
+def get_plot(dataframe):
+    print(dataframe)
 
-    return dataframe_latex
+    dataframe.columns = dataframe.columns.droplevel()
+    dataframe["idx"] = dataframe.index
+    dataframe["implementation1"] = dataframe.iloc[:, 0]
+    dataframe["implementation2"] = dataframe.iloc[:, 1]
+
+    ax = dataframe.plot.scatter(x="idx", y="implementation1", color="C0", label=dataframe.iloc[:, 0].name)
+    dataframe.plot.scatter(x="idx", y="implementation2",  color="C1", label=dataframe.iloc[:, 1].name, ax=ax)
+    ax.vlines(x=dataframe.index, ymin=dataframe.iloc[:, 0], ymax=dataframe.iloc[:, 1])
+    ax.set(xlabel="Scenarios", ylabel="Measured values")
+    ax.grid(axis='y')
+
+    return ax
 
 
 def keyword_to_dataframe(dataframe, res_type="all"):
-    if res_type == "singlemetric":
-        return single_metric_dataframe(dataframe)
-    elif res_type == "metricsavg":
+    if res_type == "metricsavg":
         return metrics_avg_dataframe(dataframe)
     else:
         return dataframe
@@ -166,22 +173,6 @@ def valid_renders_names(renders_names):
         return dir_files(renders_names[0])
 
 
-def valid_comp_parameters(metrics_names, scenes_names, ref_renders_names, gpus_renders_names):
-    val_metrics = valid_metrics(metrics_names)
-    val_ref_renders_names = valid_renders_names(ref_renders_names)
-    val_implementations_names = [names[0] for names in gpus_renders_names]
-    val_gpus_renders_names = [valid_renders_names(names[1:]) for names in gpus_renders_names]
-    val_scenes_names = valid_scenes_names(scenes_names, val_gpus_renders_names[0])
-
-    return val_metrics, val_scenes_names, val_ref_renders_names, val_gpus_renders_names, val_implementations_names
-
-
-def output_comparisons(dataframe_latex, outfile):
-    print("Output saved in", outfile)
-    print(dataframe_latex)
-    write_table(dataframe_latex, outfile)
-
-
 def remove_ticks(plot):
     plot.tick_params(
         axis='both',
@@ -203,9 +194,12 @@ def plot_input_image(image, fig, grid_pos, label):
     remove_ticks(axis)
 
 
-def plot_input_images(image1, image2, fig, grid):
-    plot_input_image(image1, fig, grid[0, 0], "Image 1")
-    plot_input_image(image2, fig, grid[0, 1], "image 2")
+def plot_input_images(image1, image2, fig, grid, image_names):
+    if image_names is None:
+        image_names = ["Image 1", "Image 2"]
+
+    plot_input_image(image1, fig, grid[0, 0], image_names[0])
+    plot_input_image(image2, fig, grid[0, 1], image_names[1])
 
 
 def plot_diff_images(diff_images, diff_images_names, fig, grid):
@@ -225,7 +219,8 @@ def plot_diff_images(diff_images, diff_images_names, fig, grid):
 
 
 # Partially taken from: https://scikit-image.org/docs/stable/auto_examples/applications/plot_image_comparison.html
-def output_comparison_images(image1, image2, diff_images, diff_images_names, outfile, show_input_images=False):
+def output_comparison_images(image1, image2, diff_images, diff_images_names, outfile, image_names,
+                             show_input_images=False):
     num_cols = 2
     num_rows = int(np.ceil(len(diff_images) / num_cols))
     fig_height = 4 * num_rows
@@ -242,7 +237,7 @@ def output_comparison_images(image1, image2, diff_images, diff_images_names, out
     outer_gs = gridspec.GridSpec(3, grid_height, figure=fig)
 
     if show_input_images:
-        plot_input_images(image1, image2, fig, outer_gs)
+        plot_input_images(image1, image2, fig, outer_gs, image_names)
 
     diff_gs = gridspec.GridSpecFromSubplotSpec(num_rows * 2, num_cols * 2, subplot_spec=outer_gs[diff_gs_start_row:, :])
 
@@ -258,7 +253,7 @@ def img_ssim_diff(image1, image2):
     image1_gray = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
     image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 
-    (score, diff) = metrics.structural_similarity(image1_gray, image2_gray, full=True)
+    _, diff = metrics.structural_similarity(image1_gray, image2_gray, full=True)
 
     return diff
 
@@ -269,7 +264,7 @@ def img_diff_contours(image1, image2):
     image1_gray = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
     image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 
-    (score, diff) = metrics.structural_similarity(image1_gray, image2_gray, full=True)
+    score, diff = metrics.structural_similarity(image1_gray, image2_gray, full=True)
 
     diff = (diff * 255).astype("uint8")
 
@@ -286,14 +281,11 @@ def img_diff_contours(image1, image2):
 
 
 def img_gray_pixel_diff(image1, image2):
-    gray_image1 = color.rgb2gray(image1)
-    gray_image2 = color.rgb2gray(image2)
-
     return util.compare_images(gray_image1, gray_image2, method="diff")
 
 
 def img_pixel_diff(image1, image2):
-    return util.compare_images(image1, image2, method="diff")
+    return 100 * util.compare_images(image1, image2, method="diff")
 
 
 def img_checkerboard(image1, image2):
@@ -311,7 +303,8 @@ def filter_img_methods(methods_names):
     return {key: img_comp_methods[key] for key in methods_names}
 
 
-def generate_comparison_images(image1_name, image2_name, comp_methods_names, show_input_images, outfile="out.pgf"):
+def generate_comparison_images(image1_name, image2_name, comp_methods_names, show_input_images, image_names,
+                               outfile="out.pgf"):
     comp_methods = filter_img_methods(comp_methods_names)
 
     image1 = read_image(image1_name)
@@ -319,32 +312,77 @@ def generate_comparison_images(image1_name, image2_name, comp_methods_names, sho
 
     diff_images = [fn(image1, image2) for _, fn in comp_methods.items()]
 
-    output_comparison_images(image1, image2, diff_images, list(comp_methods.keys()), outfile, show_input_images)
+    output_comparison_images(image1, image2, diff_images, list(comp_methods.keys()), outfile, image_names,
+                             show_input_images)
 
 
-def generate_comparison_table(metrics_names, ref_renders_names, gpus_renders_names, scenes_names, res_type="all",
-                              outfile="out.tex"):
+def make_table_output(ref_renders_names, gpus_renders_names, comp_metrics, implementations_names, scenes_names,
+                      res_type, should_plot):
+    ref_images, gpus_images = load_images(ref_renders_names, gpus_renders_names)
+    dataframe = gen_res_dataframe(comp_metrics, ref_images, gpus_images, scenes_names, implementations_names)
+    requested_dataframe = keyword_to_dataframe(dataframe, res_type)
+
+    if should_plot:
+        dataframe_latex = get_plot(requested_dataframe)
+    else:
+        dataframe_latex = get_latex_table(requested_dataframe)
+
+    return dataframe_latex
+
+
+def valid_comp_parameters(metrics_names, scenes_names, ref_renders_names, gpus_renders_names):
+    val_metrics = valid_metrics(metrics_names)
+    val_ref_renders_names = valid_renders_names(ref_renders_names)
+    val_implementations_names = [names[0] for names in gpus_renders_names]
+    val_gpus_renders_names = [valid_renders_names(names[1:]) for names in gpus_renders_names]
+    val_scenes_names = valid_scenes_names(scenes_names, val_gpus_renders_names[0])
+
+    return val_metrics, val_scenes_names, val_ref_renders_names, val_gpus_renders_names, val_implementations_names
+
+
+def output_plot(dataframe_plot, outfile="out.png"):
+    if outfile is None:
+        outfile = "out.png"
+
+    plt.savefig(outfile)
+    print("Output saved in", outfile)
+
+
+def output_comparisons(dataframe_latex, outfile="out.tex"):
+    if outfile is None:
+        outfile = "out.tex"
+
+    print("Output saved in", outfile)
+    print(dataframe_latex)
+    write_table(dataframe_latex, outfile)
+
+
+def generate_comparison_table(metrics_names, ref_renders_names, gpus_renders_names, scenes_names, res_type,
+                              should_plot, outfile):
     val_metrics_names, val_scenes_names, val_ref_renders_names, val_gpus_renders_names, \
-    val_implementations_names = valid_comp_parameters(
-        metrics_names,
-        scenes_names,
-        ref_renders_names,
-        gpus_renders_names)
+        val_implementations_names = valid_comp_parameters(
+            metrics_names,
+            scenes_names,
+            ref_renders_names,
+            gpus_renders_names)
 
-    dataframe_latex = make_latex_table(val_ref_renders_names, val_gpus_renders_names, val_metrics_names,
-                                       val_implementations_names, val_scenes_names, res_type)
+    dataframe_latex = make_table_output(val_ref_renders_names, val_gpus_renders_names, val_metrics_names,
+                                        val_implementations_names, val_scenes_names, res_type, should_plot)
 
-    output_comparisons(dataframe_latex, outfile)
+    if should_plot:
+        output_plot(dataframe_latex, outfile)
+    else:
+        output_comparisons(dataframe_latex, outfile)
 
 
 def parser_generate_comparison_image(image_args):
     generate_comparison_images(image_args.image1, image_args.image2, image_args.methods, image_args.showinputimages,
-                               image_args.outfile)
+                               image_args.imagenames, image_args.outfile)
 
 
 def parser_generate_comparison_table(table_args):
     generate_comparison_table(table_args.metrics, table_args.reference, table_args.gpu, table_args.names,
-                              table_args.view, table_args.outfile)
+                              table_args.view, table_args.plot, table_args.outfile)
 
 
 def init_table_subparser(tableparser):
@@ -379,7 +417,7 @@ def init_table_subparser(tableparser):
         nargs="?",
         type=str,
         default="all",
-        choices=["singlemetric", "all", "metricsavg"],
+        choices=["all", "metricsavg"],
         help="What data to output"
     )
     tableparser.add_argument(
@@ -387,7 +425,6 @@ def init_table_subparser(tableparser):
         "--outfile",
         nargs="?",
         type=str,
-        default="out.tex",
         help="File to output latex table to"
     )
     tableparser.add_argument(
@@ -395,8 +432,15 @@ def init_table_subparser(tableparser):
         "--metrics",
         nargs="*",
         type=str,
-        default=["psnr", "mse", "ssim", "nrmse", "mae"],
+        default=["psnr", "mse", "ssim", "nrmse"],
         help="Metrics to be calculated"
+    )
+    tableparser.add_argument(
+        "-p",
+        "--plot",
+        action=argparse.BooleanOptionalAction,
+        help="Plot output",
+        default=False
     )
 
 
@@ -438,14 +482,24 @@ def init_image_subparser(imageparser):
         action=argparse.BooleanOptionalAction,
         help="Show input images in generated image"
     )
+    imageparser.add_argument(
+        "-n",
+        "--imagenames",
+        nargs=2,
+        type=str,
+        default=["Image 1", "Image 2"]
+    )
 
 
 def parse_args():
-    cli = argparse.ArgumentParser(description="Latex table of comparison metrics for reference & GPU renders",
-                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    cli = argparse.ArgumentParser(description="Render comparison script")
     subparsers = cli.add_subparsers(title="subcommands", help="Choose to output image or table")
-    table_parser = subparsers.add_parser("table", help="table help")
-    image_parser = subparsers.add_parser("image", help="image help")
+    table_parser = subparsers.add_parser("table",
+                                         description="Latex table of comparison metrics for reference & GPU renders",
+                                         help="table help", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    image_parser = subparsers.add_parser("image",
+                                         description="Visual comparisons of reference & GPU renders",
+                                         help="image help", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     init_table_subparser(table_parser)
     init_image_subparser(image_parser)
@@ -467,7 +521,8 @@ comparison_metrics = {
     "mse": mse,
     "ssim": ssim,
     "nrmse": nrmse,
-    "mae": mae
+    "mae": mae,
+    "cwssim": cwssim
 }
 
 if __name__ == "__main__":

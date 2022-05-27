@@ -39,7 +39,7 @@
 
 bool g_show_imgui;
 
-Methods::Methods current_rendering_method = Methods::Methods::nvidia;
+Methods::Methods current_rendering_method = Methods::Methods::reduced_traverse;
 Methods::Methods prev_rendering_method;
 
 texture_t g_tex_test;
@@ -74,6 +74,7 @@ struct saved_viewpoint {
     camera_t camera;
 };
 
+int current_viewpoint = -1;
 custom_arrays::array_t<const char*> viewpoint_names(0);
 custom_arrays::array_t<saved_viewpoint> viewpoints(0);
 
@@ -167,6 +168,8 @@ void reset_camera(camera_t* camera)
     camera->x_axis_rot = 0;
     camera->y_axis_rot = 0;
     camera->quaternion = quat_identity();
+
+    current_viewpoint = -1;
 }
 
 void GLFWErrorCallback(int error_code, const char* description)
@@ -208,7 +211,7 @@ void GLFWFrambufferSizeCallback(GLFWwindow* window, int width, int height)
     Methods::cpu.resize_buffers(width, height);
     Methods::nvidia.resize_buffers(width, height);
     Methods::intel.resize_buffers(width, height);
-    Methods::hybrid.resize_buffers(width, height);
+    Methods::reducedTraverse.resize_buffers(width, height);
 
     g_camera.aspect = width / (float)height;
 
@@ -300,6 +303,8 @@ void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
         g_camera.y_axis_rot += ydiff * MOUSE_SPEED_Y;
 
         g_camera.y_axis_rot = float_clamp(g_camera.y_axis_rot, TO_RADIANS(CAMERA_MIN_Y), TO_RADIANS(CAMERA_MAX_Y));
+
+        current_viewpoint = -1;
     }
 
     if (translate_camera)
@@ -313,6 +318,8 @@ void GLFWMouseCallback(GLFWwindow* window, double xpos, double ypos)
         float speed = float_eerp(0.5f, 150.0f, g_camera.distance_t);
 
         g_camera.offset = vec3_add(g_camera.offset, vec3_add(vec3_mul(up, ydiff * MOUSE_TRANSLATION_SPEED_Y * speed), vec3_mul(right, xdiff * MOUSE_TRANSLATION_SPEED_X * speed)));
+
+        current_viewpoint = -1;
     }
 
     const vec3_t x_axis = { 1, 0, 0 };
@@ -336,6 +343,8 @@ void GLFWScrollCallback(GLFWwindow* window, double xoffset, double yoffset)
     g_camera.distance_t = float_clamp(g_camera.distance_t, 0, 1);
 
     g_camera.distance = float_eerp(CAMERA_MIN_DIST, CAMERA_MAX_DIST, g_camera.distance_t);
+
+    current_viewpoint = -1;
 }
 
 void check_u8(const char* label, uint8_t ref, uint8_t res, float original)
@@ -489,6 +498,18 @@ void* download_framebuffer(framebuffer_t* framebuffer, GLenum attachment) {
     return buffer;
 }
 
+void* download_rgb8_framebuffer(framebuffer_t* framebuffer, GLenum attachment) {
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer->framebuffer);
+
+    int pixels = framebuffer->width * framebuffer->height;
+
+    glReadBuffer(attachment);
+    void* buffer = malloc(pixels * sizeof(unsigned char) * 3);
+    glReadPixels(0, 0, framebuffer->width, framebuffer->height, GL_RGB, GL_UNSIGNED_BYTE, buffer);
+
+    return buffer;
+}
+
 #ifdef __APPLE__
     #define ASSETS_PATH "../assets"
 #else
@@ -539,7 +560,7 @@ void add_model(const char* name, const char* model_path, const char* ptex_path, 
     meshes.add(mesh);
     mesh_vaos.add(mesh_vao);
     ptexTextures.add(ptex);
-    texturesGLData.add(create_gl_texture_arrays(extract_textures(ptex), GL_LINEAR, GL_LINEAR));
+    texturesGLData.add(create_gl_texture_arrays(name, extract_textures(ptex), GL_LINEAR, GL_LINEAR));
     mesh_model_matrix.add(model_mat);
 }
 
@@ -564,7 +585,7 @@ int main(int argv, char** argc)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-#if RELEASE
+#if !DEBUG
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_FALSE);
 #else
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
@@ -572,7 +593,7 @@ int main(int argv, char** argc)
     glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_FALSE);
     glfwWindowHint(GLFW_SRGB_CAPABLE, GLFW_FALSE);
 
-    GLFWwindow* window = glfwCreateWindow(800, 800, "Test title", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(800, 800, "GPU Ptex comparison", NULL, NULL);
     if (window == NULL)
     {
         printf("Failed to create GLFW window\n");
@@ -635,7 +656,7 @@ int main(int argv, char** argc)
 
     if (has_KHR_debug)
     {
-#if !(RELEASE)
+#if DEBUG
         glDebugMessageCallback(GLDebugCallback, NULL);
         glEnable(GL_DEBUG_OUTPUT);
         glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
@@ -816,6 +837,23 @@ int main(int argv, char** argc)
                             Methods::nvidia.framebuffer.width,
                             Methods::nvidia.framebuffer.height);
                     }
+
+                    bool isRGB8 = Methods::nvidia.framebuffer_desc.color_attachments[0].internal_format == GL_RGB8;
+                    if (ImGui::Checkbox("RGB8 Output", &isRGB8)) {
+                        if (isRGB8)
+                        {
+                            Methods::nvidia.framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
+                        }
+                        else {
+                            Methods::nvidia.framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
+                        }
+
+                        recreate_framebuffer(
+                            &Methods::nvidia.framebuffer,
+                            Methods::nvidia.framebuffer_desc,
+                            Methods::nvidia.framebuffer.width,
+                            Methods::nvidia.framebuffer.height);
+                    }
                     break;
                 }
                 case Methods::Methods::intel:
@@ -838,28 +876,70 @@ int main(int argv, char** argc)
                             Methods::intel.ms_color_framebuffer.width, 
                             Methods::intel.ms_color_framebuffer.height);
                     }
+
+                    bool isRGB8 = Methods::intel.ms_color_framebuffer_desc.color_attachments[0].internal_format == GL_RGB8;
+                    if (ImGui::Checkbox("RGB8 Output", &isRGB8)) {
+                        if (isRGB8)
+                        {
+                            Methods::intel.ms_color_framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
+                            Methods::intel.resolve_color_framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
+                        }
+                        else {
+                            Methods::intel.ms_color_framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
+                            Methods::intel.resolve_color_framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
+                        }
+
+                        recreate_framebuffer(
+                            &Methods::intel.ms_color_framebuffer,
+                            Methods::intel.ms_color_framebuffer_desc,
+                            Methods::intel.ms_color_framebuffer.width,
+                            Methods::intel.ms_color_framebuffer.height);
+
+                        recreate_framebuffer(
+                            &Methods::intel.resolve_color_framebuffer,
+                            Methods::intel.resolve_color_framebuffer_desc,
+                            Methods::intel.resolve_color_framebuffer.width,
+                            Methods::intel.resolve_color_framebuffer.height);
+                    }
                     break;
                 }
-                case Methods::Methods::hybrid:
+                case Methods::Methods::reduced_traverse:
                 {
-                    int curr_aniso = Methods::hybrid.border_sampler.desc.max_anisotropy;
+                    int curr_aniso = Methods::reducedTraverse.border_sampler.desc.max_anisotropy;
                     if (ImGui::SliderInt("Max Anisotropy", &curr_aniso, 1, 16))
                     {
-                        glSamplerParameterf(Methods::hybrid.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
-                        glSamplerParameterf(Methods::hybrid.clamp_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
-                        Methods::hybrid.border_sampler.desc.max_anisotropy = curr_aniso;
-                        Methods::hybrid.clamp_sampler.desc.max_anisotropy = curr_aniso;
+                        glSamplerParameterf(Methods::reducedTraverse.border_sampler.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, curr_aniso);
+                        Methods::reducedTraverse.border_sampler.desc.max_anisotropy = curr_aniso;
                     }
 
-                    if (ImGui::SliderInt("MSAA", &Methods::hybrid.ms_framebuffer_desc.samples, 1, 16))
+                    if (ImGui::SliderInt("MSAA", &Methods::reducedTraverse.framebuffer_desc.samples, 1, 16))
                     {
                         // Recreate the framebuffer with the new number of samples
                         recreate_framebuffer(
-                            &Methods::hybrid.ms_framebuffer,
-                            Methods::hybrid.ms_framebuffer_desc,
-                            Methods::hybrid.ms_framebuffer.width,
-                            Methods::hybrid.ms_framebuffer.height);
+                            &Methods::reducedTraverse.framebuffer,
+                            Methods::reducedTraverse.framebuffer_desc,
+                            Methods::reducedTraverse.framebuffer.width,
+                            Methods::reducedTraverse.framebuffer.height);
                     }
+
+                    bool isRGB8 = Methods::reducedTraverse.framebuffer_desc.color_attachments[0].internal_format == GL_RGB8;
+                    if (ImGui::Checkbox("RGB8 Output", &isRGB8)) {
+                        if (isRGB8)
+                        {
+                            Methods::reducedTraverse.framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
+                        }
+                        else {
+                            Methods::reducedTraverse.framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
+                        }
+
+                        recreate_framebuffer(
+                            &Methods::reducedTraverse.framebuffer,
+                            Methods::reducedTraverse.framebuffer_desc,
+                            Methods::reducedTraverse.framebuffer.width,
+                            Methods::reducedTraverse.framebuffer.height);
+                    }
+
+                    ImGui::Checkbox("Visualize", &Methods::reducedTraverse.visualize);
                     break;
                 }
                 default:
@@ -874,8 +954,6 @@ int main(int argv, char** argc)
                 if (ImGui::CollapsingHeader("Viewpoints", ImGuiTreeNodeFlags_DefaultOpen))
                 {
                     static char viewpoint_name[128];
-
-                    static int current_viewpoint = 0;
 
                     // This list needs to be recreated every time we need it
                     // The underlying memory might have moved.
@@ -1008,47 +1086,54 @@ int main(int argv, char** argc)
                 0, 0, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height,
                 GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-            Methods::hybrid.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
-            // resolve hybrid MS buffer
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, Methods::hybrid.ms_framebuffer.framebuffer);
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Methods::hybrid.resolve_framebuffer.framebuffer);
-            glBlitFramebuffer(
-                0, 0, Methods::hybrid.ms_framebuffer.width, Methods::hybrid.ms_framebuffer.height,
-                0, 0, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height,
-                GL_COLOR_BUFFER_BIT, GL_NEAREST);
-
+            Methods::reducedTraverse.visualize = false;
+            Methods::reducedTraverse.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
+            
             Methods::cpu.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, ptexTextures[current_mesh], current_filter, mvp, bg_color);
 
             // Then we will download all of the final pictures.
-            // We also need to resolve the intel MS framebuffer.
+            rgb8_t* nvidia_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::nvidia.framebuffer, GL_COLOR_ATTACHMENT0);
+            rgb8_t* intel_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::intel.resolve_color_framebuffer, GL_COLOR_ATTACHMENT0);
+            rgb8_t* reduced_traverse_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::reducedTraverse.framebuffer, GL_COLOR_ATTACHMENT0);
+            rgb8_t* cpu_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::cpu.cpu_result_framebuffer, GL_COLOR_ATTACHMENT0);
+
+            // Render reduced traverse visualization
+            Methods::reducedTraverse.visualize = true;
+            Methods::reducedTraverse.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             
-            vec3_t* nvidia_data = (vec3_t*)download_framebuffer(&Methods::nvidia.framebuffer, GL_COLOR_ATTACHMENT0);
-            vec3_t* intel_data = (vec3_t*)download_framebuffer(&Methods::intel.resolve_color_framebuffer, GL_COLOR_ATTACHMENT0);
-            vec3_t* hybrid_data = (vec3_t*)download_framebuffer(&Methods::hybrid.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
-            vec3_t* cpu_data = (vec3_t*)download_framebuffer(&Methods::cpu.cpu_result_framebuffer, GL_COLOR_ATTACHMENT0);
+            rgb8_t* reduced_traverse_visualization_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::reducedTraverse.framebuffer, GL_COLOR_ATTACHMENT0);
+
+
+            char filename[128];
+            const char* viewpoint_name = current_viewpoint == -1 ? "no_viewpoint" : viewpoint_names[current_viewpoint];
+            
+            // Blindly belive we created the directory successfully.
+            create_directory("screenshots");
+            sprintf(filename, "screenshots/%s", viewpoint_name);
+            create_directory(filename);
 
             stbi_flip_vertically_on_write(true);
 
-            rgb8_t* nvidia_rgb8_data = vec3_buffer_to_rgb8(nvidia_data, Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height);
-            rgb8_t* intel_rgb8_data = vec3_buffer_to_rgb8(intel_data, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height);
-            rgb8_t* hybrid_rgb8_data = vec3_buffer_to_rgb8(hybrid_data, Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height);
-            rgb8_t* cpu_rgb8_data = vec3_buffer_to_rgb8(cpu_data, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height);
+            sprintf(filename, "screenshots/%s/nvidia.png", viewpoint_name);
+            stbi_write_png(filename, Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height, 3, nvidia_data, Methods::nvidia.framebuffer.width * 3);
+            
+            sprintf(filename, "screenshots/%s/intel.png", viewpoint_name);
+            stbi_write_png(filename, Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height, 3, intel_data, Methods::intel.resolve_color_framebuffer.width * 3);
+            
+            sprintf(filename, "screenshots/%s/reduced_traverse.png", viewpoint_name);
+            stbi_write_png(filename, Methods::reducedTraverse.framebuffer.width, Methods::reducedTraverse.framebuffer.height, 3, reduced_traverse_data, Methods::reducedTraverse.framebuffer.width * 3);
+            
+            sprintf(filename, "screenshots/%s/cpu.png", viewpoint_name);
+            stbi_write_png(filename, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height, 3, cpu_data, Methods::cpu.cpu_result_framebuffer.width * 3);
 
-            // FIXME: Add scene name to file name...
-            stbi_write_png("nvidia.png", Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height, 3, nvidia_rgb8_data, Methods::nvidia.framebuffer.width * 3);
-            stbi_write_png("intel.png", Methods::intel.resolve_color_framebuffer.width, Methods::intel.resolve_color_framebuffer.height, 3, intel_rgb8_data, Methods::intel.resolve_color_framebuffer.width * 3);
-            stbi_write_png("hybrid.png", Methods::hybrid.resolve_framebuffer.width, Methods::hybrid.resolve_framebuffer.height, 3, hybrid_rgb8_data, Methods::hybrid.resolve_framebuffer.width * 3);
-            stbi_write_png("cpu.png", Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height, 3, cpu_rgb8_data, Methods::cpu.cpu_result_framebuffer.width * 3);
+            sprintf(filename, "screenshots/%s/reduced_traverse_viz.png", viewpoint_name);
+            stbi_write_png(filename, Methods::reducedTraverse.framebuffer.width, Methods::reducedTraverse.framebuffer.height, 3, reduced_traverse_visualization_data, Methods::reducedTraverse.framebuffer.width * 3);
 
             free(nvidia_data);
             free(intel_data);
-            free(hybrid_data);
+            free(reduced_traverse_data);
+            free(reduced_traverse_visualization_data);
             free(cpu_data);
-
-            free(nvidia_rgb8_data);
-            free(intel_rgb8_data);
-            free(hybrid_rgb8_data);
-            free(cpu_rgb8_data);
 
             takeScreenshot = false;
         }
@@ -1081,8 +1166,8 @@ int main(int argv, char** argc)
             Methods::intel.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             break;
 
-        case Methods::Methods::hybrid:
-            Methods::hybrid.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
+        case Methods::Methods::reduced_traverse:
+            Methods::reducedTraverse.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             break;
 
         default:
@@ -1110,8 +1195,8 @@ int main(int argv, char** argc)
             color_output_framebuffer = Methods::intel.ms_color_framebuffer;
             break;
 
-        case Methods::Methods::hybrid:
-            color_output_framebuffer = Methods::hybrid.ms_framebuffer;
+        case Methods::Methods::reduced_traverse:
+            color_output_framebuffer = Methods::reducedTraverse.framebuffer;
             break;
 
         default:
