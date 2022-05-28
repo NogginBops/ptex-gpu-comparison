@@ -45,6 +45,12 @@ set(TARGET GpuRenderer)
 
 add_executable(${TARGET} ${HEADERS} ${SOURCES})
 
+target_compile_definitions(${TARGET} PRIVATE
+    $<$<CONFIG:Debug>:
+        DEBUG=1
+    >
+)
+
 ######## GLFW ########
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
@@ -146,3 +152,39 @@ set(ASSETS_DST "$<TARGET_FILE_DIR:${TARGET}>/assets")
 #add_dependencies(${TARGET} copy_assets)
 
 #file(COPY ${ASSETS_SRC} DESTINATION .)
+
+project(Converter)
+
+set(HEADERS  
+    src/maths.hh
+    src/platform.hh
+    src/mesh_loading.hh
+    src/mesh.hh
+)
+
+set(SOURCES 
+    src/converter/converter.cxx
+    src/maths.cxx
+    src/platform.cxx
+    src/mesh_loading.cxx
+    src/mesh.cxx
+    src/stb.cxx
+)
+
+set(TARGET Converter)
+
+add_executable(${TARGET} ${HEADERS} ${SOURCES})
+
+######## STB ########
+
+include_directories(lib/stb)
+
+######## tinyobj ########
+
+include_directories(lib/tinyobj)
+
+######## PTEX ########
+
+set(PTEX_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+target_link_libraries(${TARGET} Ptex)

@@ -624,7 +624,7 @@ int main(int argv, char** argc)
     glViewport(0, 0, width, height);
 
     g_camera = {
-       TO_RADIANS(80), // fovy
+       TO_RADIANS(50), // fovy
        width / (float)height, // aspect
        0.01f, 1000.0f, // near, far
 
@@ -669,6 +669,9 @@ int main(int argv, char** argc)
         add_model("ground plane", "models/ground_plane/ground_plane.obj", "models/ground_plane/ground_plane.ptx", mat4_scale(1.0f, 1.0f, 1.0f));
         add_model("teapot", "models/teapot/teapot.obj", "models/teapot/teapot.ptx", mat4_scale(1.0f, 1.0f, 1.0f));
         add_model("sphere", "models/mud_sphere/mud_sphere.obj", "models/mud_sphere/mud_sphere.ptx", mat4_scale(0.01f, 0.01f, 0.01f));
+        add_model("robot", "models/robot/robot_2.obj", "models/robot/Quandtum_BA-2_v1_1.ptex", mat4_mul_mat4(mat4_transpose(mat4_scale(0.2f, 0.2f, 0.2f)), mat4_transpose(mat4_translate(0, -0.8f, -0.5f))));
+
+        current_mesh = 3;
 
         current_filter = PtexFilter::getFilter(ptexTextures[current_mesh], PtexFilter::Options{ g_current_filter_type, false, 0, false });
     }
@@ -724,6 +727,7 @@ int main(int argv, char** argc)
     glEnable(GL_DEPTH_TEST);
 
     vec3_t bg_color = rgb_to_vec3(100, 149, 237);
+    bg_color = rgb_to_vec3(255, 255, 255);
 
     while (glfwWindowShouldClose(window) == false)
     {

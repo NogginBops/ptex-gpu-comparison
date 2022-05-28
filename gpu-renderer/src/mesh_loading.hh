@@ -17,3 +17,4 @@ typedef struct {
 
 ptex_mesh_t* load_ptex_mesh(const char* filename);
 
+ptex_mesh_t* load_mesh(const char* filename);

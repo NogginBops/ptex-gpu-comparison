@@ -85,6 +85,15 @@ vec2_t vec2_max(vec2_t a, vec2_t b) {
     return vec2_new(x, y);
 }
 
+vec2_t vec2_lerp(vec2_t a, vec2_t b, float t)
+{
+    return vec2_new(float_lerp(a.x, b.x, t), float_lerp(a.y, b.y, t));
+}
+
+vec2_t vec2_abs(vec2_t a) {
+    return vec2_new(fabsf(a.x), fabsf(a.y));
+}
+
 vec2_t vec2_add(vec2_t a, vec2_t b) {
     return vec2_new(a.x + b.x, a.y + b.y);
 }
@@ -95,6 +104,10 @@ vec2_t vec2_sub(vec2_t a, vec2_t b) {
 
 vec2_t vec2_mul(vec2_t v, float factor) {
     return vec2_new(v.x * factor, v.y * factor);
+}
+
+vec2_t vec2_mul_vec2(vec2_t v, vec2_t factor) {
+    return vec2_new(v.x * factor.x, v.y * factor.y);
 }
 
 vec2_t vec2_div(vec2_t v, float divisor) {

@@ -186,6 +186,11 @@ gl_ptex_data create_gl_texture_arrays(const char* name, gl_ptex_textures texture
 			glObjectLabel(GL_TEXTURE, gl_textures[i], -1, name);
 		}
 
+		int max_layers;
+		glGetIntegerv(GL_MAX_ARRAY_TEXTURE_LAYERS, &max_layers);
+
+		assert(res_textures->num_textures < max_layers);
+
 		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, res.u(), res.v(), res_textures->num_textures, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 
 		for (int j = 0; j < res_textures->num_textures; j++)
