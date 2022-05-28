@@ -163,11 +163,11 @@ void transfer_data(ptex_mesh_t* mesh, texture_t* texture, Ptex::PtexWriter* writ
 		Ptex::FaceInfo info;
 		if (b)
 		{
-			info = Ptex::FaceInfo(Ptex::Res(8, 8));
+			info = Ptex::FaceInfo(Ptex::Res(7, 7));
 		}
 		else
 		{
-			info = Ptex::FaceInfo(Ptex::Res(7, 7));
+			info = Ptex::FaceInfo(Ptex::Res(6, 6));
 		}
 
 		b = !b;
