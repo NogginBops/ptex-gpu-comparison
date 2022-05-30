@@ -218,6 +218,19 @@ def plot_diff_images(diff_images, diff_images_names, fig, grid):
         remove_ticks(comp_plot)
 
 
+def save_partial_images(image1, image2, diff_images, diff_images_names, outfile):
+    fileprefix = outfile.rsplit('-', 1)[0]
+    io.imsave(fileprefix + "-imageleft.png", image1)
+    io.imsave(fileprefix + "-imageright.png", image2)
+    colormap = plt.get_cmap('viridis')
+    for i, diff_image in enumerate(diff_images):
+        if len(diff_image.shape) < 3:
+            diff_image = colormap(diff_image)
+
+        io.imsave(fileprefix + "-" + diff_images_names[i] + ".png", diff_image)
+        print("Partial output saved in", fileprefix + "-" + diff_images_names[i] + ".png")
+
+
 # Partially taken from: https://scikit-image.org/docs/stable/auto_examples/applications/plot_image_comparison.html
 def output_comparison_images(image1, image2, diff_images, diff_images_names, outfile, image_names,
                              show_input_images=False):
@@ -242,6 +255,7 @@ def output_comparison_images(image1, image2, diff_images, diff_images_names, out
     diff_gs = gridspec.GridSpecFromSubplotSpec(num_rows * 2, num_cols * 2, subplot_spec=outer_gs[diff_gs_start_row:, :])
 
     plot_diff_images(diff_images, diff_images_names, fig, diff_gs)
+    save_partial_images(image1, image2, diff_images, diff_images_names, outfile)
 
     plt.savefig(outfile)
     print("Output saved in", outfile)
@@ -281,11 +295,14 @@ def img_diff_contours(image1, image2):
 
 
 def img_gray_pixel_diff(image1, image2):
-    return util.compare_images(gray_image1, gray_image2, method="diff")
+    image1_gray = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
+    image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
+
+    return util.compare_images(image1_gray, image2_gray, method="diff")
 
 
 def img_pixel_diff(image1, image2):
-    return 100 * util.compare_images(image1, image2, method="diff")
+    return (100 * util.compare_images(image1, image2, method="diff") * 255).astype(np.uint8)
 
 
 def img_checkerboard(image1, image2):

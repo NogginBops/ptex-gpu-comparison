@@ -7,14 +7,6 @@ mkdir -p out/plots
 mkdir -p out/images
 mkdir -p out/tables
 
-# Tables
-for metric in "${metrics[@]}"
-do
-  # python compare.py table renders/Traverse -g Discard renders/Discard -g Hybrid renders/Hybrid -m "$metric" -o out/tables/Traverse-"$metric".tex
-  python compare.py table renders/Traverse -g Discard renders/Discard -g "Reduced Traverse" renders/reduced_traverse -m "$metric" -o out/tables/Traverse-RT-"$metric".tex
-done
-# python compare.py table renders/Traverse -g Discard renders/Discard -g Hybrid renders/Hybrid -v metricsavg -o out/tables/average.tex
-python compare.py table renders/Traverse -g Discard renders/Discard -g "Reduced Traverse" renders/reduced_traverse -v metricsavg -o out/tables/average.tex
 
 # Images
 for othermethod in "${othermethods[@]}"
@@ -26,6 +18,15 @@ do
 	  cp renders/reduced_traverse_viz/"$scenario".png out/images/Reduced_traverse-"$scenario"-viz.png
 	done
 done
+
+# Tables
+for metric in "${metrics[@]}"
+do
+  # python compare.py table renders/Traverse -g Discard renders/Discard -g Hybrid renders/Hybrid -m "$metric" -o out/tables/Traverse-"$metric".tex
+  python compare.py table renders/Traverse -g Discard renders/Discard -g "Reduced Traverse" renders/reduced_traverse -m "$metric" -o out/tables/Traverse-RT-"$metric".tex
+done
+# python compare.py table renders/Traverse -g Discard renders/Discard -g Hybrid renders/Hybrid -v metricsavg -o out/tables/average.tex
+python compare.py table renders/Traverse -g Discard renders/Discard -g "Reduced Traverse" renders/reduced_traverse -v metricsavg -o out/tables/average.tex
 
 # Plots
 for metric in "${metrics[@]}"
