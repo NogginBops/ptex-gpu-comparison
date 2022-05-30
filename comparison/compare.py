@@ -130,13 +130,21 @@ def get_plot(dataframe):
     print(dataframe)
 
     dataframe.columns = dataframe.columns.droplevel()
+    num_implementations = len(dataframe.columns)
     dataframe["idx"] = dataframe.index
-    dataframe["implementation1"] = dataframe.iloc[:, 0]
-    dataframe["implementation2"] = dataframe.iloc[:, 1]
 
+    dataframe["implementation1"] = dataframe.iloc[:, 0]
     ax = dataframe.plot.scatter(x="idx", y="implementation1", color="C0", label=dataframe.iloc[:, 0].name)
-    dataframe.plot.scatter(x="idx", y="implementation2",  color="C1", label=dataframe.iloc[:, 1].name, ax=ax)
-    ax.vlines(x=dataframe.index, ymin=dataframe.iloc[:, 0], ymax=dataframe.iloc[:, 1])
+
+    for implementation_num in range(1, num_implementations):
+        old_col = dataframe.iloc[:, implementation_num]
+        new_col_name = "implementation" + str(implementation_num)
+        point_color = "C" + str(implementation_num)
+        dataframe[new_col_name] = old_col
+
+        dataframe.plot.scatter(x="idx", y=new_col_name,  color=point_color, label=old_col.name, ax=ax)
+        ax.vlines(x=dataframe.index, ymin=dataframe.iloc[:, 0], ymax=old_col)
+
     ax.set(xlabel="Scenarios", ylabel="Measured values")
     ax.grid(axis='y')
 
