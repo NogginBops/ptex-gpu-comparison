@@ -219,7 +219,7 @@ def plot_diff_images(diff_images, diff_images_names, fig, grid):
 
 
 def save_partial_images(image1, image2, diff_images, diff_images_names, outfile):
-    fileprefix = outfile.rsplit('-', 1)[0]
+    fileprefix = outfile.rsplit('.', 1)[0]
     io.imsave(fileprefix + "-imageleft.png", image1)
     io.imsave(fileprefix + "-imageright.png", image2)
     colormap = plt.get_cmap('viridis')
