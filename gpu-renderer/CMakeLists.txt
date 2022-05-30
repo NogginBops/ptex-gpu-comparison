@@ -37,6 +37,7 @@ set(SOURCES
     src/methods/CpuMethod.cxx
     src/methods/NvidiaMethod.cxx
     src/methods/IntelMethod.cxx
+    src/methods/HybridMethod.cxx
     src/methods/ReducedTraverseMethod.cxx
     src/profiler.cxx
 )
@@ -159,6 +160,7 @@ set(HEADERS
     src/maths.hh
     src/platform.hh
     src/mesh_loading.hh
+    src/array.hh
     src/mesh.hh
 )
 

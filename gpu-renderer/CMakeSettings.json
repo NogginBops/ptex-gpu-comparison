@@ -22,6 +22,19 @@
       "ctestCommandArgs": "",
       "inheritEnvironments": [ "msvc_x64_x64" ],
       "cmakeToolchain": "${projectDir}/lib/ptex/vcpkg/scripts/buildsystems/vcpkg.cmake"
+    },
+    {
+      "name": "x64-Release-With-Deb-Info",
+      "generator": "Ninja",
+      "configurationType": "RelWithDebInfo",
+      "buildRoot": "${projectDir}\\out\\build\\${name}",
+      "installRoot": "${projectDir}\\out\\install\\${name}",
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "",
+      "ctestCommandArgs": "",
+      "cmakeToolchain": "${projectDir}/lib/ptex/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "inheritEnvironments": [ "msvc_x64_x64" ],
+      "variables": []
     }
   ]
 }

@@ -118,6 +118,10 @@ float vec2_length(vec2_t v) {
     return (float)sqrt(v.x * v.x + v.y * v.y);
 }
 
+float vec2_angle(vec2_t a, vec2_t b) {
+    return fabsf(atan2f(a.y * b.x - a.y * b.x, a.x * b.x + a.y * b.y));
+}
+
 /*
  * for edge function, see
  * https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/rasterization-stage

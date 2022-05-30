@@ -47,6 +47,7 @@ vec2_t vec2_mul(vec2_t v, float factor);
 vec2_t vec2_mul_vec2(vec2_t v, vec2_t factor);
 vec2_t vec2_div(vec2_t v, float divisor);
 float vec2_length(vec2_t v);
+float vec2_angle(vec2_t a, vec2_t b);
 float vec2_edge(vec2_t start, vec2_t end, vec2_t v);
 void vec2_print(const char *name, vec2_t v);
 
