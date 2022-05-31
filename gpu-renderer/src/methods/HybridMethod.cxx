@@ -103,8 +103,8 @@ namespace Methods {
 				sprintf(name, "aTexBorder[%d]", i);
 				uniform_1i(ptex_program, name, i);
 
-				sprintf(name, "aTexClamp[%d]", i + 24);
-				uniform_1i(ptex_program, name, i);
+				sprintf(name, "aTexClamp[%d]", i);
+				uniform_1i(ptex_program, name, i + 24);
 			}
 		}
 	}

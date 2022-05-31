@@ -59,7 +59,7 @@ gl_ptex_textures extract_textures(Ptex::PtexTexture* tex) {
 		auto face_info = tex->getFaceInfo(i);
 		
 		assert(tex->dataType() == Ptex::DataType::dt_uint8);
-		assert(tex->numChannels() == 4 || tex->numChannels() == 1);
+		assert(tex->numChannels() == 4  || tex->numChannels() == 3 || tex->numChannels() == 1);
 
 		// DataSize(dataType()) * numChannels() * getFaceInfo(faceid).res.size()
 		int data_size = DataSize(tex->dataType())* tex->numChannels()* face_info.res.size();

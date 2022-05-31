@@ -676,7 +676,7 @@ int main(int argv, char** argc)
         add_model("teapot", "models/teapot/teapot.obj", "models/teapot/teapot.ptx", mat4_scale(1.0f, 1.0f, 1.0f), blue_bg);
         add_model("sphere", "models/mud_sphere/mud_sphere.obj", "models/mud_sphere/mud_sphere.ptx", mat4_scale(0.01f, 0.01f, 0.01f), blue_bg);
         add_model("robot", "models/robot/robot_2.obj", "models/robot/Quandtum_BA-2_v1_1.ptex", mat4_mul_mat4(mat4_transpose(mat4_scale(0.2f, 0.2f, 0.2f)), mat4_transpose(mat4_translate(0, -0.8f, -0.5f))), white_bg);
-
+        
         current_mesh = 3;
 
         current_filter = PtexFilter::getFilter(ptexTextures[current_mesh], PtexFilter::Options{ g_current_filter_type, false, 0, false });
