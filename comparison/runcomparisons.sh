@@ -1,22 +1,27 @@
 #!/bin/bash
 declare -a metrics=("ssim" "psnr" "mse" "nrmse")
-declare -a scenarios=("teapotside" "teapotabove" "teapotzoomed" "groundhorizon" "groundzoomed" "groundabove")
 declare -a othermethods=("Discard" "Traverse")
 
+cd ../gpu-renderer/assets/screenshots/ || exit
+sh renamerenders.sh
+cd ../../../comparison || exit
+rm -r renders
+cp -r ../gpu-renderer/assets/screenshots/renders renders/
+mv renders/cpu renders/CPU
+mv renders/nvidia renders/Traverse
+mv renders/intel renders/Discard
+rm -r out
 mkdir -p out/plots
 mkdir -p out/images
 mkdir -p out/tables
 
-mv ../gpu-renderer/assets/screenshots/renders renders
-mv renders/cpu CPU
-mv renders/nvidia Nvidia
-mv renders/intel Discard
-
 # Images
 for othermethod in "${othermethods[@]}"
 do
-	for scenario in "${scenarios[@]}"
+	for scenario in renders/Traverse/*.png;
 	do
+	  scenario=${scenario##*/}
+	  scenario=${scenario%.png}
 		python compare.py image renders/"$othermethod"/"$scenario".png renders/Hybrid/"$scenario".png -m ssim pixeldiff diffcontours -s -n "$othermethod" Hybrid -o out/images/"$othermethod"-Hybrid-"$scenario".png
 		python compare.py image renders/"$othermethod"/"$scenario".png renders/reduced_traverse/"$scenario".png -m ssim pixeldiff diffcontours -s -n "$othermethod" "Reduced Traverse" -o out/images/"$othermethod"-Reduced_traverse-"$scenario".png
 	  cp renders/reduced_traverse_viz/"$scenario".png out/images/Reduced_traverse-"$scenario"-viz.png
