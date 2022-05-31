@@ -7,6 +7,11 @@ mkdir -p out/plots
 mkdir -p out/images
 mkdir -p out/tables
 
+mv ../gpu-renderer/assets/screenshots/renders renders
+mv renders/cpu CPU
+mv renders/nvidia Nvidia
+mv renders/intel Discard
+
 # Images
 for othermethod in "${othermethods[@]}"
 do
