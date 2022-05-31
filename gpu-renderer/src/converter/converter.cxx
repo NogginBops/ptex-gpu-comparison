@@ -303,7 +303,7 @@ int main(int argv, char** argc)
 
 	const char* ptex_path = "models/robot/Quandtum_BA-2_v1_1.ptex";
 	const char* obj_path = "models/robot/robot_2.obj";
-	const char* tex_path = "models/robot/textures/checker-map_tho.png";
+	const char* tex_path = "models/robot/textures/Turret-Diffuse.jpg";
 	const char* adj_path = "models/robot/robot_2.adj";
 
 	ptex_mesh_t* mesh = load_mesh(obj_path);

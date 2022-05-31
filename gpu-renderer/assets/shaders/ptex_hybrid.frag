@@ -166,7 +166,7 @@ vec3 ptexture_hybrid(sampler2DArray texBorder[NUM_TEX], sampler2DArray texClamp[
 {
     FaceData data = face_data[faceID];
     
-    vec2 change = fwidth(uv);
+    vec2 change = fwidth(uv * textureSize(texBorder[data.texIDsliceID & 0xFFFFu], 0).xy);
     float S2 = change.x + change.y;
 
     if (S2 > 2)
@@ -192,5 +192,4 @@ void main()
     vec3 color = ptexture_hybrid(aTexBorder, aTexClamp, UV, faceID).rgb;
 
     FragColor = vec4(color, 1);
-    FragColor = vec4(UV, 0, 1);
 }

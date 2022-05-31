@@ -53,6 +53,7 @@ custom_arrays::array_t<GLuint> mesh_vaos(10);
 custom_arrays::array_t<Ptex::PtexTexture*> ptexTextures(10);
 custom_arrays::array_t<gl_ptex_data> texturesGLData(10);
 custom_arrays::array_t<mat4_t> mesh_model_matrix(10);
+custom_arrays::array_t<vec3_t> background_colors(10);
 
 typedef struct {
     float fovy;
@@ -519,7 +520,7 @@ void* download_rgb8_framebuffer(framebuffer_t* framebuffer, GLenum attachment) {
 
 #define VIEWPOINTS_FILE "viewpoints.vp"
 
-void add_model(const char* name, const char* model_path, const char* ptex_path, mat4_t model_mat)
+void add_model(const char* name, const char* model_path, const char* ptex_path, mat4_t model_mat, vec3_t bg)
 {
     Ptex::String error_str;
     Ptex::PtexTexture* ptex = PtexTexture::open(ptex_path, error_str);
@@ -563,6 +564,7 @@ void add_model(const char* name, const char* model_path, const char* ptex_path, 
     ptexTextures.add(ptex);
     texturesGLData.add(create_gl_texture_arrays(name, extract_textures(ptex), GL_LINEAR, GL_LINEAR));
     mesh_model_matrix.add(model_mat);
+    background_colors.add(bg);
 }
 
 int main(int argv, char** argc)
@@ -666,11 +668,14 @@ int main(int argv, char** argc)
 
     // Load models and textures
     {
+        vec3_t blue_bg = rgb_to_vec3(100, 149, 237);
+        vec3_t white_bg = rgb_to_vec3(255, 255, 255);
+
         g_current_filter_type = PtexFilter::FilterType::f_bilinear;
-        add_model("ground plane", "models/ground_plane/ground_plane.obj", "models/ground_plane/ground_plane.ptx", mat4_scale(1.0f, 1.0f, 1.0f));
-        add_model("teapot", "models/teapot/teapot.obj", "models/teapot/teapot.ptx", mat4_scale(1.0f, 1.0f, 1.0f));
-        add_model("sphere", "models/mud_sphere/mud_sphere.obj", "models/mud_sphere/mud_sphere.ptx", mat4_scale(0.01f, 0.01f, 0.01f));
-        add_model("robot", "models/robot/robot_2.obj", "models/robot/Quandtum_BA-2_v1_1.ptex", mat4_mul_mat4(mat4_transpose(mat4_scale(0.2f, 0.2f, 0.2f)), mat4_transpose(mat4_translate(0, -0.8f, -0.5f))));
+        add_model("ground plane", "models/ground_plane/ground_plane.obj", "models/ground_plane/ground_plane.ptx", mat4_scale(1.0f, 1.0f, 1.0f), blue_bg);
+        add_model("teapot", "models/teapot/teapot.obj", "models/teapot/teapot.ptx", mat4_scale(1.0f, 1.0f, 1.0f), blue_bg);
+        add_model("sphere", "models/mud_sphere/mud_sphere.obj", "models/mud_sphere/mud_sphere.ptx", mat4_scale(0.01f, 0.01f, 0.01f), blue_bg);
+        add_model("robot", "models/robot/robot_2.obj", "models/robot/Quandtum_BA-2_v1_1.ptex", mat4_mul_mat4(mat4_transpose(mat4_scale(0.2f, 0.2f, 0.2f)), mat4_transpose(mat4_translate(0, -0.8f, -0.5f))), white_bg);
 
         current_mesh = 3;
 
@@ -726,9 +731,6 @@ int main(int argv, char** argc)
     mat4_t mvp = mat4_mul_mat4(model, vp);
 
     glEnable(GL_DEPTH_TEST);
-
-    vec3_t bg_color = rgb_to_vec3(100, 149, 237);
-    bg_color = rgb_to_vec3(255, 255, 255);
 
     while (glfwWindowShouldClose(window) == false)
     {
@@ -1111,6 +1113,8 @@ int main(int argv, char** argc)
 
             ImGui::End();
         }
+
+        vec3_t bg_color = background_colors[current_mesh];
         
         view = calc_view_matrix(g_camera);
         view = mat4_transpose(view);
