@@ -133,8 +133,8 @@ def get_plot(dataframe):
     num_implementations = len(dataframe.columns)
     dataframe["idx"] = dataframe.index
 
-    dataframe["implementation1"] = dataframe.iloc[:, 0]
-    ax = dataframe.plot.scatter(x="idx", y="implementation1", color="C0", label=dataframe.iloc[:, 0].name)
+    dataframe["implementation0"] = dataframe.iloc[:, 0]
+    ax = dataframe.plot.scatter(x="idx", y="implementation0", color="C0", label=dataframe.iloc[:, 0].name)
 
     for implementation_num in range(1, num_implementations):
         old_col = dataframe.iloc[:, implementation_num]
