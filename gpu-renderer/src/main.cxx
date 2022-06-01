@@ -850,9 +850,11 @@ int main(int argv, char** argc)
                         if (isRGB8)
                         {
                             Methods::nvidia.framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
+                            Methods::nvidia.resolve_framebuffer_desc.color_attachments[0].internal_format = GL_RGB8;
                         }
                         else {
                             Methods::nvidia.framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
+                            Methods::nvidia.resolve_framebuffer_desc.color_attachments[0].internal_format = GL_RGB32F;
                         }
 
                         recreate_framebuffer(
@@ -860,6 +862,12 @@ int main(int argv, char** argc)
                             Methods::nvidia.framebuffer_desc,
                             Methods::nvidia.framebuffer.width,
                             Methods::nvidia.framebuffer.height);
+
+                        recreate_framebuffer(
+                            &Methods::nvidia.resolve_framebuffer,
+                            Methods::nvidia.resolve_framebuffer_desc,
+                            Methods::nvidia.resolve_framebuffer.width,
+                            Methods::nvidia.resolve_framebuffer.height);
                     }
                     break;
                 }
@@ -1169,6 +1177,31 @@ int main(int argv, char** argc)
             rgb8_t* reduced_traverse_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::reducedTraverse.framebuffer, GL_COLOR_ATTACHMENT0);
             rgb8_t* cpu_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::cpu.cpu_result_framebuffer, GL_COLOR_ATTACHMENT0);
 
+            // Render nvidia with MSAA x8 for visual comparisons
+            int old_nvidia_samples = Methods::nvidia.framebuffer_desc.samples;
+            // Recreate the framebuffer with msaa.
+            Methods::nvidia.framebuffer_desc.samples = 8;
+            recreate_framebuffer(
+                &Methods::nvidia.framebuffer, 
+                Methods::nvidia.framebuffer_desc, 
+                Methods::nvidia.framebuffer.width,
+                Methods::nvidia.framebuffer.height);
+            Methods::nvidia.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
+            // resolve nvidia msaa buffer
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, Methods::nvidia.framebuffer.framebuffer);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Methods::nvidia.resolve_framebuffer.framebuffer);
+            glBlitFramebuffer(
+                0, 0, Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height,
+                0, 0, Methods::nvidia.resolve_framebuffer.width, Methods::nvidia.resolve_framebuffer.height,
+                GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            // Reset the framebuffer to old settings.
+            Methods::nvidia.framebuffer_desc.samples = old_nvidia_samples;
+            recreate_framebuffer(
+                &Methods::nvidia.framebuffer,
+                Methods::nvidia.framebuffer_desc,
+                Methods::nvidia.framebuffer.width,
+                Methods::nvidia.framebuffer.height);
+            
             // Render hybrid visualization
             Methods::hybrid.visualize = true;
             Methods::hybrid.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
@@ -1184,6 +1217,7 @@ int main(int argv, char** argc)
             Methods::reducedTraverse.visualize = true;
             Methods::reducedTraverse.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             
+            rgb8_t* nvidia_msaa_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::nvidia.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
             rgb8_t* hybrid_visualization_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::hybrid.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
             rgb8_t* reduced_traverse_visualization_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::reducedTraverse.framebuffer, GL_COLOR_ATTACHMENT0);
 
@@ -1202,6 +1236,9 @@ int main(int argv, char** argc)
 
             sprintf(filename, "screenshots/%s/nvidia.png", viewpoint_name);
             stbi_write_png(filename, Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height, 3, nvidia_data, Methods::nvidia.framebuffer.width * 3);
+
+            sprintf(filename, "screenshots/%s/nvidia_msaa_x8.png", viewpoint_name);
+            stbi_write_png(filename, Methods::nvidia.framebuffer.width, Methods::nvidia.framebuffer.height, 3, nvidia_msaa_data, Methods::nvidia.framebuffer.width * 3);
             
             sprintf(filename, "screenshots/%s/intel.png", viewpoint_name);
             stbi_write_png(filename, Methods::intel.resolve_framebuffer.width, Methods::intel.resolve_framebuffer.height, 3, intel_data, Methods::intel.resolve_framebuffer.width * 3);
@@ -1222,6 +1259,7 @@ int main(int argv, char** argc)
             stbi_write_png(filename, Methods::reducedTraverse.framebuffer.width, Methods::reducedTraverse.framebuffer.height, 3, reduced_traverse_visualization_data, Methods::reducedTraverse.framebuffer.width * 3);
 
             free(nvidia_data);
+            free(nvidia_msaa_data);
             free(intel_data);
             free(hybrid_data);
             free(hybrid_visualization_data);

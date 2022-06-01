@@ -35,6 +35,9 @@ namespace Methods {
 	};
 
 	struct NvidiaMethod {
+		framebuffer_desc resolve_framebuffer_desc;
+		framebuffer_t resolve_framebuffer;
+
 		framebuffer_desc framebuffer_desc;
 		framebuffer_t framebuffer;
 

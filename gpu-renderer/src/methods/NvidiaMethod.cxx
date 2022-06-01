@@ -40,6 +40,41 @@ namespace Methods {
 			framebuffer = create_framebuffer(framebuffer_desc, width, height);
 		}
 
+		// setup resolve output buffer only used for screenshots
+		{
+			color_attachment_desc color_desc = {
+				"Attachment: nvidia_resolve.color (RGB32F)",
+				GL_RGB8,
+				GL_RGB,
+				GL_FLOAT,
+				GL_REPEAT, GL_REPEAT,
+				GL_LINEAR, GL_LINEAR
+			};
+
+			color_attachment_desc* color_descriptions = new color_attachment_desc[1];
+			color_descriptions[0] = color_desc;
+
+			depth_attachment_desc depth_desc = {
+				"Attachment: nvidia_resolve.depth (DEPTH32F)",
+				GL_DEPTH_COMPONENT32F,
+				GL_REPEAT, GL_REPEAT,
+				GL_LINEAR, GL_LINEAR
+			};
+
+			depth_attachment_desc* depth_descriptions = new depth_attachment_desc[1];
+			depth_descriptions[0] = depth_desc;
+
+			resolve_framebuffer_desc = {
+				"FBO: nvidia_resolve",
+				1,
+				color_descriptions,
+				depth_descriptions,
+				1 // number of samples
+			};
+
+			resolve_framebuffer = create_framebuffer(resolve_framebuffer_desc, width, height);
+		}
+
 		ptex_program = compile_shader("program: nvidia_ptex", "shaders/ptex.vert", "shaders/ptex_nvidia.frag");
 
 		sampler_desc border_desc = {
@@ -106,5 +141,6 @@ namespace Methods {
 	void NvidiaMethod::resize_buffers(int width, int height)
 	{
 		recreate_framebuffer(&framebuffer, framebuffer_desc, width, height);
+		recreate_framebuffer(&resolve_framebuffer, resolve_framebuffer_desc, width, height);
 	}
 }
