@@ -1201,7 +1201,35 @@ int main(int argv, char** argc)
                 Methods::nvidia.framebuffer_desc,
                 Methods::nvidia.framebuffer.width,
                 Methods::nvidia.framebuffer.height);
+
+            // Render reduced traverse with MSAA x8 for visual comparisons
+            int old_reduced_traverse_samples = Methods::reducedTraverse.framebuffer_desc.samples;
+            // Recreate the framebuffer with msaa.
+            Methods::reducedTraverse.framebuffer_desc.samples = 8;
+            recreate_framebuffer(
+                &Methods::reducedTraverse.framebuffer,
+                Methods::reducedTraverse.framebuffer_desc,
+                Methods::reducedTraverse.framebuffer.width,
+                Methods::reducedTraverse.framebuffer.height);
+            Methods::reducedTraverse.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
+            // resolve reduced traverse msaa buffer
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, Methods::reducedTraverse.framebuffer.framebuffer);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Methods::reducedTraverse.resolve_framebuffer.framebuffer);
+            glBlitFramebuffer(
+                0, 0, Methods::reducedTraverse.framebuffer.width, Methods::reducedTraverse.framebuffer.height,
+                0, 0, Methods::reducedTraverse.resolve_framebuffer.width, Methods::reducedTraverse.resolve_framebuffer.height,
+                GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            // Reset the framebuffer to old settings.
+            Methods::reducedTraverse.framebuffer_desc.samples = old_reduced_traverse_samples;
+            recreate_framebuffer(
+                &Methods::reducedTraverse.framebuffer,
+                Methods::reducedTraverse.framebuffer_desc,
+                Methods::reducedTraverse.framebuffer.width,
+                Methods::reducedTraverse.framebuffer.height);
             
+            rgb8_t* nvidia_msaa_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::nvidia.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
+            rgb8_t* reduced_traverse_msaa_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::reducedTraverse.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
+
             // Render hybrid visualization
             Methods::hybrid.visualize = true;
             Methods::hybrid.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
@@ -1217,7 +1245,6 @@ int main(int argv, char** argc)
             Methods::reducedTraverse.visualize = true;
             Methods::reducedTraverse.render(mesh_vaos[current_mesh], meshes[current_mesh]->num_vertices, texturesGLData[current_mesh], mvp, bg_color);
             
-            rgb8_t* nvidia_msaa_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::nvidia.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
             rgb8_t* hybrid_visualization_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::hybrid.resolve_framebuffer, GL_COLOR_ATTACHMENT0);
             rgb8_t* reduced_traverse_visualization_data = (rgb8_t*)download_rgb8_framebuffer(&Methods::reducedTraverse.framebuffer, GL_COLOR_ATTACHMENT0);
 
@@ -1248,7 +1275,10 @@ int main(int argv, char** argc)
 
             sprintf(filename, "screenshots/%s/reduced_traverse.png", viewpoint_name);
             stbi_write_png(filename, Methods::reducedTraverse.framebuffer.width, Methods::reducedTraverse.framebuffer.height, 3, reduced_traverse_data, Methods::reducedTraverse.framebuffer.width * 3);
-            
+
+            sprintf(filename, "screenshots/%s/reduced_traverse_msaa_x8.png", viewpoint_name);
+            stbi_write_png(filename, Methods::reducedTraverse.framebuffer.width, Methods::reducedTraverse.framebuffer.height, 3, reduced_traverse_msaa_data, Methods::reducedTraverse.framebuffer.width * 3);
+
             sprintf(filename, "screenshots/%s/cpu.png", viewpoint_name);
             stbi_write_png(filename, Methods::cpu.cpu_result_framebuffer.width, Methods::cpu.cpu_result_framebuffer.height, 3, cpu_data, Methods::cpu.cpu_result_framebuffer.width * 3);
 
@@ -1264,6 +1294,7 @@ int main(int argv, char** argc)
             free(hybrid_data);
             free(hybrid_visualization_data);
             free(reduced_traverse_data);
+            free(reduced_traverse_msaa_data);
             free(reduced_traverse_visualization_data);
             free(cpu_data);
 
