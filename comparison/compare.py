@@ -134,7 +134,7 @@ def get_plot(dataframe):
     dataframe["idx"] = dataframe.index
 
     dataframe["implementation0"] = dataframe.iloc[:, 0]
-    ax = dataframe.plot.scatter(x="idx", y="implementation0", color="C0", label=dataframe.iloc[:, 0].name)
+    ax = dataframe.plot.scatter(x="idx", y="implementation0", color="C0", label=dataframe.iloc[:, 0].name, rot=45)
 
     for implementation_num in range(1, num_implementations):
         old_col = dataframe.iloc[:, implementation_num]
@@ -142,7 +142,7 @@ def get_plot(dataframe):
         point_color = "C" + str(implementation_num)
         dataframe[new_col_name] = old_col
 
-        dataframe.plot.scatter(x="idx", y=new_col_name,  color=point_color, label=old_col.name, ax=ax)
+        dataframe.plot.scatter(x="idx", y=new_col_name,  color=point_color, label=old_col.name, rot=45, ax=ax)
         ax.vlines(x=dataframe.index, ymin=dataframe.iloc[:, 0], ymax=old_col)
 
     ax.set(xlabel="Scenarios", ylabel="Measured values")
@@ -226,10 +226,8 @@ def plot_diff_images(diff_images, diff_images_names, fig, grid):
         remove_ticks(comp_plot)
 
 
-def save_partial_images(image1, image2, diff_images, diff_images_names, outfile):
+def save_partial_images(diff_images, diff_images_names, outfile):
     fileprefix = outfile.rsplit('.', 1)[0]
-    io.imsave(fileprefix + "-imageleft.png", image1)
-    io.imsave(fileprefix + "-imageright.png", image2)
     colormap = plt.get_cmap('viridis')
     for i, diff_image in enumerate(diff_images):
         if len(diff_image.shape) < 3:
@@ -240,33 +238,8 @@ def save_partial_images(image1, image2, diff_images, diff_images_names, outfile)
 
 
 # Partially taken from: https://scikit-image.org/docs/stable/auto_examples/applications/plot_image_comparison.html
-def output_comparison_images(image1, image2, diff_images, diff_images_names, outfile, image_names,
-                             show_input_images=False):
-    num_cols = 2
-    num_rows = int(np.ceil(len(diff_images) / num_cols))
-    fig_height = 4 * num_rows
-    grid_height = 1
-    diff_gs_start_row = 0
-
-    if show_input_images:
-        fig_height += 3
-        grid_height += 1
-        diff_gs_start_row += 1
-
-    fig = plt.figure(figsize=(8, fig_height), constrained_layout=True)
-
-    outer_gs = gridspec.GridSpec(3, grid_height, figure=fig)
-
-    if show_input_images:
-        plot_input_images(image1, image2, fig, outer_gs, image_names)
-
-    diff_gs = gridspec.GridSpecFromSubplotSpec(num_rows * 2, num_cols * 2, subplot_spec=outer_gs[diff_gs_start_row:, :])
-
-    plot_diff_images(diff_images, diff_images_names, fig, diff_gs)
-    save_partial_images(image1, image2, diff_images, diff_images_names, outfile)
-
-    plt.savefig(outfile)
-    print("Output saved in", outfile)
+def output_comparison_images(diff_images, diff_images_names, outfile):
+    save_partial_images(diff_images, diff_images_names, outfile)
 
 
 # Taken from:
@@ -328,8 +301,7 @@ def filter_img_methods(methods_names):
     return {key: img_comp_methods[key] for key in methods_names}
 
 
-def generate_comparison_images(image1_name, image2_name, comp_methods_names, show_input_images, image_names,
-                               outfile="out.pgf"):
+def generate_comparison_images(image1_name, image2_name, comp_methods_names, outfile="out.pgf"):
     comp_methods = filter_img_methods(comp_methods_names)
 
     image1 = read_image(image1_name)
@@ -337,8 +309,7 @@ def generate_comparison_images(image1_name, image2_name, comp_methods_names, sho
 
     diff_images = [fn(image1, image2) for _, fn in comp_methods.items()]
 
-    output_comparison_images(image1, image2, diff_images, list(comp_methods.keys()), outfile, image_names,
-                             show_input_images)
+    output_comparison_images(diff_images, list(comp_methods.keys()), outfile)
 
 
 def make_table_output(ref_renders_names, gpus_renders_names, comp_metrics, implementations_names, scenes_names,
@@ -369,6 +340,7 @@ def output_plot(dataframe_plot, outfile="out.png"):
     if outfile is None:
         outfile = "out.png"
 
+    plt.tight_layout()
     plt.savefig(outfile)
     print("Output saved in", outfile)
 
@@ -401,8 +373,7 @@ def generate_comparison_table(metrics_names, ref_renders_names, gpus_renders_nam
 
 
 def parser_generate_comparison_image(image_args):
-    generate_comparison_images(image_args.image1, image_args.image2, image_args.methods, image_args.showinputimages,
-                               image_args.imagenames, image_args.outfile)
+    generate_comparison_images(image_args.image1, image_args.image2, image_args.methods, image_args.outfile)
 
 
 def parser_generate_comparison_table(table_args):
